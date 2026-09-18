@@ -1,0 +1,69 @@
+{
+ "figure": "nalla_restoration_2024_2026.png",
+ "lake_id": "nalla_cheruvu_kukatpally",
+ "run_id": "run_20260918T172336Z_eb42ab",
+ "started_utc": "2026-09-18T17:23:36+00:00",
+ "code_version": "0.2.0",
+ "code_commit": "d749524247",
+ "params_hash": "bd6dcad4f256ce27",
+ "config_files": [
+  "configs/thresholds.yaml",
+  "configs/lakes.yaml"
+ ],
+ "boundary_run_id": "run_20260918T170803Z_24bdb3",
+ "boundary_code_commit": "8f5bf811a4",
+ "stac": "https://earth-search.aws.element84.com/v1",
+ "window_m": 840,
+ "grid_m": 10,
+ "water_is": "MNDWI > 0 on a 10 m grid, connected to the OSM seed outline; a quick check, not the pipeline's Otsu threshold",
+ "scenes": [
+  {
+   "scene_id": "S2A_43QHV_20240427_0_L2A",
+   "date": "2024-04-27",
+   "note": "dry season, before the September 2024 demolitions",
+   "scene_cloud_pct": 0.0,
+   "open_water_acres_mndwi_gt0_10m": 0.0,
+   "median_mndwi_in_osm_outline": -0.46
+  },
+  {
+   "scene_id": "S2B_43QHV_20241218_0_L2A",
+   "date": "2024-12-18",
+   "note": "post-monsoon, after the 22 Sep 2024 demolitions",
+   "scene_cloud_pct": 0.1,
+   "open_water_acres_mndwi_gt0_10m": 11.9,
+   "median_mndwi_in_osm_outline": 0.43
+  },
+  {
+   "scene_id": "S2B_43QHV_20250328_0_L2A",
+   "date": "2025-03-28",
+   "note": "lake drained (HYDRAA reported desilting, Apr 2025)",
+   "scene_cloud_pct": 0.0,
+   "open_water_acres_mndwi_gt0_10m": 0.7,
+   "median_mndwi_in_osm_outline": -0.41
+  },
+  {
+   "scene_id": "S2B_43QHV_20251213_1_L2A",
+   "date": "2025-12-13",
+   "note": "post-monsoon; latest scene in our 2019–2025 record",
+   "scene_cloud_pct": 0.0,
+   "open_water_acres_mndwi_gt0_10m": 13.9,
+   "median_mndwi_in_osm_outline": 0.53
+  },
+  {
+   "scene_id": "S2A_43QHV_20260310_0_L2A",
+   "date": "2026-03-10",
+   "note": "the day after the 9 Mar 2026 reopening",
+   "scene_cloud_pct": 0.0,
+   "open_water_acres_mndwi_gt0_10m": 11.3,
+   "median_mndwi_in_osm_outline": 0.26
+  },
+  {
+   "scene_id": "S2A_43QHV_20260429_0_L2A",
+   "date": "2026-04-29",
+   "note": "dry season",
+   "scene_cloud_pct": 0.0,
+   "open_water_acres_mndwi_gt0_10m": 4.2,
+   "median_mndwi_in_osm_outline": -0.22
+  }
+ ]
+}
