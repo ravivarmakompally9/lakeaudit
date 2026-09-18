@@ -15,7 +15,11 @@
    python -m lakeaudit run --lake nalla_cheruvu_kukatpally
    python -m lakeaudit run --lake durgam_cheruvu
    ```
-   Open each `outputs/<lake>/preview.png` and `map.html`. **Look at Hussain Sagar first** — it is big and unambiguous, so if the water outline is wrong there, something is off. Then Nalla Cheruvu: the log prints an acreage per year; HYDRAA's own number for this lake is **27 acres total, 14 encroached**. Whatever our max-extent acreage is, write it next to that. That comparison is the demo.
+   Open each `outputs/<lake>/preview.png` and `map.html`. **Look at Hussain Sagar first** — it is big and unambiguous, so if the water outline is wrong there, something is off. Then Nalla Cheruvu. HYDRAA's own number for this lake is **27 acres total, 14 encroached**.
+
+   **First, confirm it is the right lake.** The register has `seed_verified: false`: it was matched by name to OSM way 129532522, and "Nalla Cheruvu" is a common name. Check that the water body at **17.4884, 78.4184** is the one HYDRAA surveyed in September 2024 (a news photo or HYDRAA's press note against Google Maps). If it is, set `seed_verified: true` and commit. If it isn't, drop the HYDRAA comparison from the demo and say why — the comparison is worthless against the wrong lake.
+
+   Expected output: open water 2022 **9.1 ac** · 2024 **10.0** · 2025 **12.7**; 2019–21 and 2023 are clear scenes (0 % ROI cloud) with no open water — the lakebed reads as land; max extent **13.3 ac** (5.4 ha → small class → 9 m ring); structures **0 inside · 0 in buffer · 645 outside**. The zero is expected, not a bug — the script below explains why, and it is the most important thing this lake shows.
 
    If the OSM seed lands on the wrong water body (the `seed_verified: false` lakes), edit the seed coordinates in `configs/lakes.yaml` and rerun. That is a one-line change, and saying so in the review is itself a point.
 
@@ -50,13 +54,13 @@
 
 **Live: the register (30 s).** Open `configs/lakes.yaml`. *Adding a lake is a row. There is no lake in the code.*
 
-**Live: Hussain Sagar (1 min).** `preview.png` then `map.html`. Toggle the water layers by year. *Sentinel-2, post-monsoon window, one scene per year, chosen by cloud cover over the lake — not over the whole tile. The index is MNDWI; the threshold is Otsu run inside the lake's own neighbourhood, because on a whole Hyderabad tile water is under 1% of pixels and Otsu's assumption breaks.*
+**Live: Hussain Sagar (45 s).** `preview.png` then `map.html`. Toggle the water layers by year. *Sentinel-2, post-monsoon window, one scene per year, chosen by cloud cover over the lake — not over the whole tile. The index is MNDWI; the threshold is Otsu run inside the lake's own neighbourhood, because on a whole Hyderabad tile water is under 1% of pixels and Otsu's assumption breaks.*
 
-**Live: Nalla Cheruvu (1.5 min).** `area_by_year.png` — the lake's life story. Then the map: the red line is the max observed extent; buildings inside it are red. Say the acreage, then say HYDRAA's 27/14. *That's our first validation point. It's one lake and it's not blind yet — but the pipeline gives a number that can be checked against an official one, and that is the whole project.*
+**Live: Nalla Cheruvu (1.5 min).** `area_by_year.png` — the lake's life story. Then the map: the red line is the max observed extent. Say the acreage, then say HYDRAA's 27/14. *That's our first validation point. It's one lake and it's not blind yet — but the pipeline gives a number that can be checked against an official one, and that is the whole project.*
 
 **Live: provenance (30 s).** Click any building on the map → popup shows zone, distance, run id, **commit hash**. Open `run.json`. *Every row can be regenerated. If someone challenges a line in month five, we rerun this exact commit with this exact params hash.*
 
-**Live: the gates (1 min).** Run the clean CSV, then the dropped-digit one. *The official boundary lives in scanned PDFs. OCR lies. A dropped digit moves a vertex 7,000 km. Three checks, and a sheet that fails any one goes to a human — it never becomes a boundary.*
+**Live: the gates (45 s).** Run the clean CSV, then the dropped-digit one. *The official boundary lives in scanned PDFs. OCR lies. A dropped digit moves a vertex 7,000 km. Three checks, and a sheet that fails any one goes to a human — it never becomes a boundary.*
 
 **Live: abstention (1 min).** The lookup page. 40 m accuracy → refuses, with the reason in plain words. 5 m → verdict. *This is the rule that makes the system safe to exist. Every other tool in this space answers anyway.*
 
