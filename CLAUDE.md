@@ -28,7 +28,8 @@ rate and an abstention threshold, built on a reproducible reconstruction pipelin
 ## Second review is TOMORROW (Sept 19, 2026). Goal: demo ~35% working.
 
 What must work on the laptop tonight, in order:
-1. `python -m lakeaudit run --lake hussain_sagar` → sane acreage (~1,300–1,500 ac/year), red outline
+1. `python -m lakeaudit run --lake hussain_sagar` → ~1,010–1,065 ac/year, max extent
+   ≈1,081 ac (437 ha); agrees with OSM's mapped shoreline (454 ha) within 4 %. Red outline
    traces the lake in `outputs/hussain_sagar/preview.png` and `map.html`.
 2. `python -m lakeaudit run --lake nalla_cheruvu_kukatpally` — HYDRAA's official figure for this lake
    is **27 acres total, 14 encroached**; our max-extent acreage is compared against that in the demo.
@@ -61,6 +62,10 @@ Full script + Q&A: `REVIEW_DEMO.md`. Status table: `README.md`.
    MNDWI ≈+0.7 over Hussain Sagar water.
 3. Otsu is run inside a per-lake ROI, never scene-global (bimodality fails when water <1 % of tile);
    degenerate Otsu falls back to threshold 0.0 and says so in `threshold_method`.
+4. OSM multipolygon relations with an outer ring split across several OPEN ways were closed way-by-way,
+   drawing chords → truncated seed (Hussain Sagar 242 ha instead of 454 ha) → 600 m ROI clipped the
+   water mask (930 ac instead of 1,081 ac). `register._rings` now stitches ways (linemerge+polygonize)
+   and subtracts inner rings. Check: water extent must stay well inside the ROI edge.
 
 ## Repo map
 
