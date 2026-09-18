@@ -106,7 +106,10 @@ _LEAFLET = """<!doctype html><html><head><meta charset="utf-8"><title>{title}</t
 </head><body><div id="m"></div>
 <script>
 const B={boundary}; const W={water}; const S={structures}; const SRC="{source}";
-const m=L.map('m'); L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png',{{maxZoom:19,attribution:'&copy; OpenStreetMap'}}).addTo(m);
+const m=L.map('m');
+// No real basemap under synthetic shapes: a fake lake over real homes must never be rendered.
+if(SRC!=='sample') L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png',{{maxZoom:19,attribution:'&copy; OpenStreetMap'}}).addTo(m);
+else document.getElementById('m').style.background='#f4f1ea';
 const ring=L.geoJSON(B,{{filter:f=>f.properties.layer==='buffer_ring',style:{{color:'#956426',weight:1,fillColor:'#e0b96a',fillOpacity:.45,dashArray:'6 4'}}}}).addTo(m);
 const ext=L.geoJSON(B,{{filter:f=>f.properties.layer==='max_observed_extent',style:{{color:'#a8123a',weight:3,fill:false}}}}).addTo(m);
 const seed=L.geoJSON(B,{{filter:f=>f.properties.layer==='seed_polygon',style:{{color:'#6d7d7f',weight:1,fill:false,dashArray:'2 4'}}}}).addTo(m);
