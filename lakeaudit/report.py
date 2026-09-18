@@ -115,8 +115,16 @@ const wl={{}};
 yrs.forEach((y,i)=>{{const t=yrs.length>1?i/(yrs.length-1):1; wl['water '+y]=L.geoJSON(W,{{filter:f=>f.properties.year===y,style:{{color:'#0a6f7d',weight:1,fillColor:'#0a6f7d',fillOpacity:.15+.35*t}}}});}});
 if(yrs.length) wl['water '+yrs[yrs.length-1]].addTo(m);
 const zc={{inside_extent:'#a8123a',in_buffer:'#c9791c',outside:'#43565a'}};
+// A building's zone means nothing without the boundary it was measured against: say which, from what, when.
+const EP=(B.features.find(f=>f.properties.layer==='max_observed_extent')||{{properties:{{}}}}).properties;
+const BSRC=(SRC==='sample'?'SYNTHETIC sample data — not a result':'Sentinel-2 L2A, post-monsoon')+', '+(EP.years_used||[]).join(', ')+' ('+(EP.scene_ids||[]).length+' scenes)';
+const pop=p=>'<b>'+p.structure_id+'</b> <small>('+p.footprint_source+' footprint)</small><br>zone: '+p.zone+'<br>distance to extent line: '+p.dist_to_extent_m+' m'
+ +'<hr style="margin:4px 0"><small>measured against: max observed water extent — one witness, not the FTL<br>'+BSRC
+ +'<br>buffer: '+EP.buffer_width_m+' m ('+EP.area_class+' lake, by observed extent)'
+ +'<details><summary>scene ids</summary>'+(EP.scene_ids||[]).join('<br>')+'</details>'
+ +'run: '+p.run_id+'<br>commit: '+p.code_commit+' · params: '+p.params_hash+'</small>';
 const st=L.geoJSON(S,{{style:f=>({{color:zc[f.properties.zone],weight:1,fillColor:zc[f.properties.zone],fillOpacity:.85}}),
- onEachFeature:(f,l)=>l.bindPopup('<b>'+f.properties.structure_id+'</b><br>zone: '+f.properties.zone+'<br>distance to extent: '+f.properties.dist_to_extent_m+' m<br>run: '+f.properties.run_id+'<br>commit: '+f.properties.code_commit)}}).addTo(m);
+ onEachFeature:(f,l)=>l.bindPopup(pop(f.properties),{{maxWidth:320}})}}).addTo(m);
 L.control.layers(null,Object.assign({{'buffer ring':ring,'max observed extent':ext,'OSM seed polygon':seed,'buildings':st}},wl),{{collapsed:false}}).addTo(m);
 const lg=L.control({{position:'bottomleft'}}); lg.onAdd=()=>{{const d=L.DomUtil.create('div','lg'); d.innerHTML='<span class="sw" style="border:2px solid #a8123a"></span>max observed extent — one witness, not the FTL<br><span class="sw" style="background:#e0b96a"></span>statutory buffer ring<br><span class="sw" style="background:#0a6f7d;opacity:.5"></span>water by year (toggle)<br><span class="sw" style="background:#a8123a"></span>building inside &nbsp;<span class="sw" style="background:#c9791c"></span>in buffer &nbsp;<span class="sw" style="background:#43565a"></span>outside'; return d;}}; lg.addTo(m);
 if(SRC==='sample'){{const w=L.control({{position:'topright'}}); w.onAdd=()=>{{const d=L.DomUtil.create('div','warn'); d.textContent='SYNTHETIC SAMPLE DATA — not a result'; return d;}}; w.addTo(m);}}
