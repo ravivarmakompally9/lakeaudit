@@ -69,33 +69,34 @@ python -m lakeaudit pdf --pdf path/to/hmda_sheet.pdf                            
 
 ### The web app
 
-`python -m lakeaudit serve`, then open http://localhost:8000. The map is the interface: every processed lake's
-observed extent, buffer ring, water by year and structures by zone; "Use my location" (or a typed / clicked point)
-runs `/nearby` then `/lookup`, shows **how sure we are** (GPS accuracy vs distance to the line) *before* any verdict,
-and refuses when the line runs through the uncertainty circle. The notified-FTL layer is shown but disabled: no
-dataset yet, and nothing stands in for it. Synthetic lakes are drawn only with the basemap hidden. The original
-single-form page is at `/classic`.
+`python -m lakeaudit serve`, then open http://localhost:8000. One panel, three screens:
+
+- **Home** — *Use my location*, or *Enter coordinates* (latitude, longitude, accuracy; *Pick on map*; *Check*), and the list of lakes.
+- **Result** — the nearest lake, one verdict (inside the extent / in the buffer ring / outside) or **Cannot answer** when the
+  position is less certain than the distance to the line (*Try again*, *Pick on map*), the two numbers behind it, *View lake*.
+- **Lake** — observed extent, buffer width, years with water, buildings inside / in buffer; *Check a location here*, *Zoom to lake*.
+
+Layers: Streets / Satellite, Observed extent, Buffer ring, Buildings (click one for its zone, run and commit). Every screen has
+a collapsed *Data source* (run, commit, params). Synthetic lakes are hidden when real ones exist. The old form is at `/classic`.
 
 | endpoint | returns |
 |---|---|
-| `GET /lakes` | one card per lake a run produced: register fields, centroid/bbox, extent acres, area class + buffer, per-year status, structure counts, provenance, `official_ftl: {available:false, …}` |
+| `GET /lakes` | one card per lake a run produced (never invented): centroid/bbox, extent, buffer, per-year status, structures, provenance, `official_ftl: {available:false}` |
 | `GET /lake/{id}` | the card + `run.json` + boundary, water-by-year and structures GeoJSON |
 | `GET /nearby?lat&lon` | every lake by distance (m, UTM) from the point to its observed-extent edge, with `point_zone` |
 | `GET /lookup?lat&lon&accuracy_m[&lake_id]` | verdict or abstention; `lake_id` judges against that lake instead of the nearest |
 
-Leaflet 1.9.4 is vendored in `lakeaudit/static/leaflet/` (npm tarball, SRI-verified). UI walkthrough at desktop and
-phone sizes with a mocked GPS fix — fails on any console error or a touch target under 44 px:
-
-```bash
-pip install playwright && python -m playwright install chromium
-python scripts/ui_walkthrough.py        # server must be running; screenshots -> docs/screenshots/
-```
+Screenshots for the deck (server running): `python scripts/screenshots.py` → `docs/screenshots/`.
 
 ### Tests
 
 ```bash
-python -m pytest -q tests               # 16: gates, water extraction, API contract (needs httpx)
+pip install playwright && python -m playwright install chromium    # once, for the browser tests
+python -m pytest -q tests               # 43: gates, water extraction, API, and every button in the web app
 ```
+
+`tests/test_ui.py` clicks every button and control in a real browser (desktop and phone sizes) against a throwaway
+`--offline` data tree, with no network, and fails on any console error, any control under 44 px, or sideways scrolling.
 
 ### PostGIS (optional, for the production store)
 
@@ -120,8 +121,8 @@ python -m lakeaudit load-db --lake nalla_cheruvu_kukatpally --dsn postgresql://p
 | FTL vertex extraction: three validity gates | done, tested |
 | FTL vertex extraction: PDF table reader | best-effort, needs real sheets to tune |
 | Lookup API with abstention rule | done |
-| Map-first web app (`/lakes`, `/lake/{id}`, `/nearby`, `/lookup?lake_id`), desktop + phone | done; Playwright walkthrough, 16 tests |
-| Official notified-FTL layer in the app | not started — layer shown disabled until polygons are extracted |
+| Map-first web app (`/lakes`, `/lake/{id}`, `/nearby`, `/lookup?lake_id`), desktop + phone | done; every button covered by `tests/test_ui.py` |
+| Official notified-FTL layer in the app | not started — needs extracted polygons (`official_ftl.available: false`) |
 | Multi-year MSS/Landsat (1984→) via GEE | not started — awaiting GEE approval |
 | Blind validation against notified polygons | not started — needs extracted official polygons |
 | Building dating 2016–2023 (Open Buildings 2.5D Temporal) | not started |

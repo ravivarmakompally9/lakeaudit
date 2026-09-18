@@ -44,15 +44,14 @@ What must work on the laptop tonight, in order:
 3. `python -m lakeaudit run --lake durgam_cheruvu` — verified: 68–78 ac/yr (2023: 54), max extent **81 ac**,
    both basins (cable bridge at ~17.4315 splits them; needs the OSM seed, way 28131043, to keep both).
    Record has 65 / 83 / 160+ ac candidates; ours is one witness, it does not pick between them.
-4. `python -m lakeaudit serve` → http://localhost:8000 — the map-first app (`lakeaudit/static/app.html`).
-   Show abstention: "Enter or place a point instead" → 17.430068, 78.486859 (Hussain Sagar east shore, 20 m
-   outside the extent) → accuracy 40 refuses, 5 gives `in_buffer`. The old form page is at `/classic`.
-   Walkthrough + screenshots: `python scripts/ui_walkthrough.py` (Playwright, 1400×900 and 390×844, mocked GPS
-   17.4935, 78.4043 ±35 m → Nalla Cheruvu 1.48 km, outside) → `docs/screenshots/`.
+4. `python -m lakeaudit serve` → http://localhost:8000 — simple map app (`lakeaudit/static/app.html`): Home
+   (Use my location · Enter coordinates · lakes), Result (verdict or Cannot answer), Lake (4 numbers, Check here, Zoom).
+   Show abstention: Enter coordinates → 17.430068, 78.486859 (Hussain Sagar east shore, 20 m outside) → accuracy 40
+   → Cannot answer; 5 → In the buffer ring. Keep it simple — the user asked for clean, not dense. Old form: `/classic`.
 5. `python -m lakeaudit gates --csv sample_data/ftl_vertices_clean.csv --perimeter 1858.4` (PASS) and
    `..._ocr_dropped_digit.csv` (FAIL gate 1).
-6. `python -m pytest -q tests` → 16 passed (pytest + httpx in requirements.txt; `test_api.py` builds a temp
-   outputs tree from `--offline` runs).
+6. `python -m pytest -q tests` → 43 passed (~15 s). `test_ui.py` clicks every button in Chromium (needs
+   `pip install playwright && python -m playwright install chromium`; skips if missing). Add a test for every new control.
 7. `python -m lakeaudit run --lake alwal_cheruvu --offline` as the no-WiFi backup.
 Full script + Q&A: `REVIEW_DEMO.md`. Status table: `README.md`.
 
@@ -106,10 +105,10 @@ lakeaudit/pipeline.py     run_lake(): the unit of work
 lakeaudit/cli.py          run | run-all | gates | pdf | serve | doctor | debug | load-db
 lakeaudit/ftl_extract/    gates.py (3 validity gates, tested) + pdf_table.py (best-effort HMDA PDF reader)
 lakeaudit/sample_data.py  synthetic shrinking lake for --offline
-tests/                    16 tests: gates catch OCR damage; water recovers area within 3 %; cloudy year rejected;
-                          API lists only lakes a run produced, /nearby + /lookup(lake_id), abstention intact
-scripts/ui_walkthrough.py Playwright drive of the app, desktop + phone; fails on console errors / targets < 44 px
-docs/screenshots/         walkthrough screenshots (home, lake, located, 40 m refusal, 5 m verdict, layers)
+tests/                    43 tests: gates catch OCR damage; water recovers area within 3 %; cloudy year rejected;
+                          API lists only lakes a run produced, /nearby + /lookup(lake_id), abstention intact;
+                          test_ui.py: every button/control in the app, desktop + phone, no console errors
+scripts/screenshots.py    pictures of the app on real outputs -> docs/screenshots/ (no checks; checks are tests)
 outputs/<lake_id>/        run.json, water_by_year.csv/.geojson, boundary.geojson, structures.geojson, preview.png, map.html
 ```
 
