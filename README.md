@@ -29,6 +29,8 @@ Everything is driven by two config files. Adding a lake is adding a row to `conf
 
 ## Run it
 
+Python 3.10–3.12 recommended (3.11 tested).
+
 ```bash
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
