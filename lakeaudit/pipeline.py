@@ -15,7 +15,7 @@ from .register import load_register, resolve_seed, Lake
 from .imagery import make_grid, best_scene_for_year
 from .water import rasterize_roi, extract_water, WaterResult, NO_SCENE_METHODS
 from .boundary import max_observed_extent
-from .structures import fetch_osm_buildings, classify, zone_summary
+from .structures import buildings_for_lake, classify, zone_summary
 from .store import write_outputs
 from .report import render_preview, render_area_chart, render_map
 from .geo import bbox_pad_deg, area_m2, m2_to_acres, utm_crs_for, to_utm, to_wgs
@@ -108,11 +108,13 @@ def run_lake(repo_root: Path, lake_id: str, *, offline: bool = False, years: lis
 
     # ---------------------------------------------------------------- 4. structures
     structs = []
+    footprints_from = "sample" if offline else None
     if boundary is not None:
         if not offline:
             try:
                 bb = boundary.buffer_outer_wgs.buffer(0.002).bounds  # ~200 m beyond the ring
-                footprints = fetch_osm_buildings(bb, cfg["structures"]["overpass_url"])
+                footprints, footprints_from = buildings_for_lake(lake.id, bb, cfg["structures"]["overpass_url"])
+                log.info("buildings: %d footprints from %s", len(footprints), footprints_from)
             except Exception as e:
                 log.warning("Overpass failed: %s — structures skipped this run", e)
                 footprints = []
@@ -130,6 +132,7 @@ def run_lake(repo_root: Path, lake_id: str, *, offline: bool = False, years: lis
         "years_no_open_water": [w.year for w in waters if w.polygon_wgs is None and w.year not in no_scene],
         "boundary": boundary.summary() if boundary else None,
         "structures": zone_summary(structs) if structs else None,
+        "structures_footprints_from": footprints_from,
         "elapsed_s": round(time.time() - t0, 1),
         **({"sample_truth": truth} if truth else {}),
     }

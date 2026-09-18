@@ -7,14 +7,25 @@ production source and drops in as a different loader with the same output shape.
 We report parcel geometry only. No owner, no survey number, no identity."""
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
-from shapely.geometry import Polygon, MultiPolygon, shape
+from shapely.geometry import Polygon, MultiPolygon, box, mapping, shape
 from shapely.ops import unary_union
 
 from .geo import utm_crs_for, to_utm, area_m2
 from .register import UA, OVERPASS_MIRRORS
+
+log = logging.getLogger("lakeaudit")
+
+# Footprints fetched once per lake and reused: Overpass goes down for hours, and a failed
+# fetch used to overwrite a lake's buildings with none. Each file records the bbox it covers
+# and when it was fetched; delete a file to refetch.
+BUILDING_CACHE = Path(__file__).resolve().parent.parent / "cache" / "buildings"
 
 _OVERPASS_BLDG = """
 [out:json][timeout:90];
@@ -69,6 +80,38 @@ def fetch_osm_buildings(bbox_wgs, overpass_url: str, timeout: int = 120) -> list
             if outers:
                 out.append((f"osm_rel_{el['id']}", unary_union(outers), tags))
     return out
+
+
+def save_building_cache(lake_id: str, bbox_wgs, footprints: list[tuple[str, Polygon, dict]],
+                        fetched_utc: str, note: str = "") -> Path:
+    BUILDING_CACHE.mkdir(parents=True, exist_ok=True)
+    p = BUILDING_CACHE / f"{lake_id}.geojson"
+    p.write_text(json.dumps({
+        "type": "FeatureCollection",
+        "lakeaudit": {"lake_id": lake_id, "bbox": [round(v, 7) for v in bbox_wgs], "fetched_utc": fetched_utc,
+                      "source": "osm_overpass", "note": note},
+        "features": [{"type": "Feature", "geometry": mapping(g), "properties": {"id": i, "tags": t}} for i, g, t in footprints],
+    }))
+    return p
+
+
+def buildings_for_lake(lake_id: str, bbox_wgs, overpass_url: str, timeout: int = 120):
+    """Footprints for one lake -> (footprints, where_from). Uses cache/buildings/<lake>.geojson when
+    its bbox covers the one asked for (to ~1 m); otherwise fetches from Overpass and saves the
+    result. A failed fetch raises and never touches the cache."""
+    want = box(*bbox_wgs)
+    p = BUILDING_CACHE / f"{lake_id}.geojson"
+    if p.exists():
+        fc = json.loads(p.read_text())
+        meta = fc.get("lakeaudit", {})
+        if box(*meta["bbox"]).buffer(1e-5).covers(want):
+            out = [(f["properties"]["id"], shape(f["geometry"]), f["properties"].get("tags") or {}) for f in fc["features"]]
+            return [t for t in out if t[1].intersects(want)], f"cache/buildings, OSM fetched {meta['fetched_utc']}"
+        log.info("building cache for %s does not cover the requested bbox — refetching", lake_id)
+    fp = fetch_osm_buildings(bbox_wgs, overpass_url, timeout)
+    fetched = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
+    save_building_cache(lake_id, bbox_wgs, fp, fetched)
+    return fp, f"Overpass live, fetched {fetched}"
 
 
 def classify(footprints: list[tuple[str, Polygon, dict]], extent_wgs, ring_wgs, source: str) -> list[Structure]:
