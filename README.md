@@ -67,6 +67,26 @@ python -m lakeaudit gates --csv sample_data/ftl_vertices_ocr_shifted_point.csv -
 python -m lakeaudit pdf --pdf path/to/hmda_sheet.pdf                                                # try a real sheet
 ```
 
+### How wrong can the line be? (validation)
+
+```bash
+python -m lakeaudit validate --lake hussain_sagar --kind osm_shoreline          # vs OSM's mapped shoreline
+python -m lakeaudit validate --lake X --kind notified_ftl --reference sheet.vertices.csv --perimeter M
+python -m lakeaudit validation-summary                                           # every comparison + the published error rate
+```
+
+Measures our max observed extent against a reference polygon: IoU, area error, and the gap in metres from
+the reference line to ours (median, p95, max, share within 9 / 20 / 30 / 60 m). Writes
+`outputs/<lake>/validation_<kind>.json` and `.png`. The reference is read only after a run and is never an
+input to the pipeline. A notified FTL is accepted only as a vertex table that passes the three gates; a table
+that fails is refused, never compared. **Only gated notified FTLs on real (non-synthetic) runs count toward
+the published error rate**, and today that count is zero. The OSM comparison is a check on the method, not
+the number: OSM is not the FTL, and it is also our seed.
+
+Against OSM (runs of 18 Sep 2026): Hussain Sagar IoU 0.96, gap median 7 m / p95 36 m · Durgam Cheruvu 0.86,
+10 / 24 m · Nalla Cheruvu (Kukatpally) 0.84, 8 / 20 m. The worst gaps are channels and inlets narrower than
+one 20 m Sentinel-2 pixel.
+
 ### The web app
 
 `python -m lakeaudit serve`, then open http://localhost:8000. One panel, three screens:
@@ -92,7 +112,7 @@ Screenshots for the deck (server running): `python scripts/screenshots.py` → `
 
 ```bash
 pip install playwright && python -m playwright install chromium    # once, for the browser tests
-python -m pytest -q tests               # 43: gates, water extraction, API, and every button in the web app
+python -m pytest -q tests               # 48: gates, water extraction, validation, API, and every button in the web app
 ```
 
 `tests/test_ui.py` clicks every button and control in a real browser (desktop and phone sizes) against a throwaway
@@ -124,7 +144,8 @@ python -m lakeaudit load-db --lake nalla_cheruvu_kukatpally --dsn postgresql://p
 | Map-first web app (`/lakes`, `/lake/{id}`, `/nearby`, `/lookup?lake_id`), desktop + phone | done; every button covered by `tests/test_ui.py` |
 | Official notified-FTL layer in the app | not started — needs extracted polygons (`official_ftl.available: false`) |
 | Multi-year MSS/Landsat (1984→) via GEE | not started — awaiting GEE approval |
-| Blind validation against notified polygons | not started — needs extracted official polygons |
+| Validation machinery (IoU, gap in metres, gated references, stale-run check) | done, tested; run against OSM on 3 lakes |
+| Blind validation against notified polygons — the published error rate | not started — needs extracted official polygons (n = 0 today) |
 | Building dating 2016–2023 (Open Buildings 2.5D Temporal) | not started |
 | Adversarial eval + conformal threshold | not started |
 | Review queue UI | schema only |

@@ -4,6 +4,8 @@
   run-all   [--offline]                                   every lake in the register
   gates     --csv vertices.csv [--perimeter M]            run the 3 validity gates on a vertex table
   pdf       --pdf sheet.pdf                               extract a vertex table from an HMDA PDF, then run gates
+  validate  --lake ID --kind KIND [--reference PATH]      measure our line against a reference polygon (IoU, gap in metres)
+  validation-summary                                      every validation on disk + the published error rate (so far)
   serve     [--port 8000]                                 start the lookup API + demo page
   load-db   --lake ID --dsn postgresql://...              ingest a run into PostGIS
   doctor                                                  check that the public data sources are reachable
@@ -67,6 +69,51 @@ def cmd_pdf(a):
     rep = run_gates(vertices_from_rows(rows), a.perimeter or meta.get("declared_perimeter_m"))
     print(json.dumps(rep.as_dict(), indent=2))
     print("\nRESULT:", "PASS" if rep.passed else "FAIL — routed to manual entry")
+
+
+def cmd_validate(a):
+    from .validate import RefusedReference, load_reference, validate_lake
+    path = Path(a.reference) if a.reference else None
+    if path is None:
+        if a.kind != "osm_shoreline":
+            print(f"--reference is required for kind {a.kind}"); sys.exit(2)
+        path = ROOT / "cache" / "seeds" / f"{a.lake}.geojson"
+        if not path.exists():
+            print(f"no cached OSM seed for {a.lake} at {path}"); sys.exit(2)
+    try:
+        ref = load_reference(path, a.kind, perimeter_m=a.perimeter, date=a.date)
+    except RefusedReference as e:
+        if e.gates:
+            print(json.dumps(e.gates, indent=2))
+        print("\nREFUSED — not compared:\n  " + "\n  ".join(e.reasons))
+        sys.exit(2)
+    rec = validate_lake(ROOT, a.lake, ref, step_m=a.step)
+    m, g = rec["metrics"], rec["metrics"]["gap_ref_to_ours_m"]
+    print(json.dumps(m, indent=2))
+    print(f"\n{rec['lake_name']}: ours vs {a.kind}")
+    print(f"  IoU {m['iou']:.3f} · area {m['area_ours_acres']:.1f} ac vs {m['area_ref_acres']:.1f} ac ({m['area_error_pct']:+.1f} %)")
+    print(f"  reference line -> our line: median {g['median']:.0f} m · p95 {g['p95']:.0f} m · max {g['max']:.0f} m"
+          f" · {100 * m['ref_line_within_m']['30']:.0f} % within 30 m · {100 * m['ref_line_outside_ours']:.0f} % lies outside our extent")
+    print("  " + ("COUNTS toward the published error rate" if rec["counts_toward_published_error_rate"]
+                  else f"does NOT count toward the published error rate: {rec['why_not_counted']}"))
+    out = ROOT / "outputs" / a.lake
+    print(f"\nwrote {out / f'validation_{a.kind}.json'}\n      {out / f'validation_{a.kind}.png'}")
+
+
+def cmd_validation_summary(a):
+    from .validate import summarize
+    s = summarize(ROOT)
+    print(f"{'lake':28s} {'reference':14s} {'IoU':>6s} {'area%':>7s} {'med m':>6s} {'p95 m':>6s} {'max m':>6s} {'<=30m':>6s}  counted")
+    for r in s["rows"]:
+        flag = "yes" if r["counted"] else "no"
+        flag += "  (STALE: lake re-run since)" if r["stale"] else ""
+        flag += "  [SYNTHETIC]" if r["synthetic"] else ""
+        print(f"{r['lake_id']:28s} {r['kind']:14s} {r['iou']:6.3f} {r['area_error_pct']:+7.1f} {r['gap_median_m']:6.0f} "
+              f"{r['gap_p95_m']:6.0f} {r['gap_max_m']:6.0f} {100 * r['within_30m']:5.0f}%  {flag}")
+    print("\nby reference kind (current runs only):")
+    print(json.dumps(s["by_kind"], indent=2))
+    print("\npublished error rate (gated notified FTL, real data only):")
+    print(json.dumps(s["published_error_rate"], indent=2, ensure_ascii=False))
 
 
 def cmd_doctor(a):
@@ -162,6 +209,14 @@ def main(argv=None):
     ra = sp.add_parser("run-all"); ra.add_argument("--offline", action="store_true"); ra.add_argument("--years", nargs="*", type=int); ra.set_defaults(fn=cmd_run_all)
     g = sp.add_parser("gates"); g.add_argument("--csv", required=True); g.add_argument("--perimeter", type=float); g.set_defaults(fn=cmd_gates)
     pd = sp.add_parser("pdf"); pd.add_argument("--pdf", required=True); pd.add_argument("--perimeter", type=float); pd.set_defaults(fn=cmd_pdf)
+    v = sp.add_parser("validate"); v.add_argument("--lake", required=True)
+    v.add_argument("--kind", required=True, choices=["notified_ftl", "osm_shoreline", "field_gps", "survey_1971", "synthetic"])
+    v.add_argument("--reference", help="vertex table (.csv, gated) or polygon (.geojson); default for osm_shoreline: the cached seed")
+    v.add_argument("--perimeter", type=float, help="perimeter printed on the sheet, metres (gate 3)")
+    v.add_argument("--date", help="the reference's own date (notification / survey / walk)")
+    v.add_argument("--step", type=float, default=5.0, help="sample spacing along the reference line, metres")
+    v.set_defaults(fn=cmd_validate)
+    sp.add_parser("validation-summary").set_defaults(fn=cmd_validation_summary)
     s = sp.add_parser("serve"); s.add_argument("--port", type=int, default=8000); s.set_defaults(fn=cmd_serve)
     sp.add_parser("doctor").set_defaults(fn=cmd_doctor)
     dbg = sp.add_parser("debug"); dbg.add_argument("--lake", required=True); dbg.add_argument("--year", type=int, default=2023); dbg.set_defaults(fn=cmd_debug)

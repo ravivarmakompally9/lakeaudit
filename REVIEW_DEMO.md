@@ -44,6 +44,18 @@
    python -m pytest -q tests
    ```
 
+5b. **Measure the three real lakes against OSM, then show the refusal path**
+   ```bash
+   python -m lakeaudit validate --lake hussain_sagar --kind osm_shoreline
+   python -m lakeaudit validate --lake durgam_cheruvu --kind osm_shoreline
+   python -m lakeaudit validate --lake nalla_cheruvu_kukatpally --kind osm_shoreline
+   python -m lakeaudit validation-summary
+   python -m lakeaudit validate --lake hussain_sagar --kind notified_ftl --reference sample_data/ftl_vertices_ocr_dropped_digit.csv --perimeter 1858.4
+   ```
+   Expected: IoU 0.96 / 0.86 / 0.84; gap median 7 / 10 / 8 m, p95 36 / 24 / 20 m; summary ends with
+   `published error rate … n_lakes: 0 — not yet measured`. The last command prints **REFUSED — not compared**.
+   Open `outputs/hussain_sagar/validation_osm_shoreline.png`.
+
 6. **Commit.** `git add -A && git commit -m "second review"`. The commit hash is now in every output row — show that.
 
 ## Tomorrow — the 8-minute flow
@@ -72,6 +84,9 @@ Short on time: drop the first half of 6 (the area-class point); keep the 2.6 vs 
 
 **Live: the gates (45 s).** Run the clean CSV, then the dropped-digit one. *The official boundary lives in scanned PDFs. OCR lies. A dropped digit moves a vertex 7,000 km. Three checks, and a sheet that fails any one goes to a human — it never becomes a boundary.*
 
+**Live: how wrong can the line be (45 s).** `validation_osm_shoreline.png` for Hussain Sagar, then `validation-summary`.
+*This is the machinery for the number nobody publishes: IoU and the gap in metres, point by point along the line. The darker the dot, the further the reference line is from ours. Today the reference is OSM's shoreline, and that is not the FTL, so the tool itself prints "does not count". The bottom line reads n = 0: the published error rate starts when the first gated HMDA sheet goes in. A sheet that fails the gates is refused, never compared.* Point at the worst gap: *a channel narrower than one 20 m pixel. That is exactly the kind of limit we publish.*
+
 **Live: abstention (1 min).** The lookup page. 40 m accuracy → refuses, with the reason in plain words. 5 m → verdict. *This is the rule that makes the system safe to exist. Every other tool in this space answers anyway.*
 
 **Slide: what's next (30 s).** The table in README under "Honest status". Say the percentage out loud: *roughly a third of the build; the parts that are done are the parts everything else stands on.*
@@ -94,7 +109,7 @@ Short on time: drop the first half of 6 (the area-class point); keep the 2.6 vs 
 
 **"Where do the buildings come from?"** OpenStreetMap today, because it needs no setup. Google Open Buildings V3 is the production source and drops in as a config switch. OSM coverage is partial and Open Buildings' South Asia recall is about 77%, so counts are reported with that caveat — never as complete.
 
-**"How accurate is it?"** We don't know yet, and that is the honest answer this review should hear. Measuring it — blind, against the 765 notified polygons — is Slice 3. What we can say today: on a synthetic lake with known area the pipeline recovers it within 3% (`tests/test_water.py`), and cloud-covered years are rejected rather than silently shrinking the lake.
+**"How accurate is it?"** Against the notified FTL we don't know yet, and that is the honest answer this review should hear. Measuring it (blind, against the 765 notified polygons) is Slice 3, and the measuring tool is already built and tested: it recovers a known 20 m offset as 20 m. What we can say today: against OSM's mapped shoreline, which is not the FTL, our line is within a median 7–10 m (p95 20–36 m) on three lakes. On a synthetic lake with known area the pipeline recovers it within 3% (`tests/test_water.py`), and cloud-covered years are rejected rather than silently shrinking the lake.
 
 **"What if OCR of the PDF fails?"** Then the gates fail and the sheet goes to manual entry. The system is designed so that a bad extraction cannot become a boundary. The PDF reader is best-effort until we have real sheets to tune it on.
 
@@ -108,7 +123,7 @@ Short on time: drop the first half of 6 (the area-class point); keep the 2.6 vs 
 |---|---|---|
 | Extract official polygons from HMDA sheets for 15 lakes | 2 | the first georeferenced FTL vector dataset |
 | GEE pipeline for Landsat 1984→ | 2 | water extent back to 1984, MSS as labelled context |
-| **Blind validation against notified polygons** | 3 | IoU, mean/worst gap in metres, area error — *the number* |
+| **Blind validation against notified polygons** (tool built; needs the sheets) | 3 | IoU, mean/worst gap in metres, area error — *the number* |
 | Building dating 2016–2023 with cloud-gap bounds | 2 | first-appearance year per structure |
 | Adversarial eval + conformal threshold | 3 | the published abstention threshold |
 | Field visits (all three), review queue, public site | ongoing | ground truth; nothing public without `confirmed` |

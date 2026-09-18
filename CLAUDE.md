@@ -50,8 +50,10 @@ What must work on the laptop tonight, in order:
    → Cannot answer; 5 → In the buffer ring. Keep it simple — the user asked for clean, not dense. Old form: `/classic`.
 5. `python -m lakeaudit gates --csv sample_data/ftl_vertices_clean.csv --perimeter 1858.4` (PASS) and
    `..._ocr_dropped_digit.csv` (FAIL gate 1).
-6. `python -m pytest -q tests` → 43 passed (~15 s). `test_ui.py` clicks every button in Chromium (needs
+6. `python -m pytest -q tests` → 48 passed (~15 s). `test_ui.py` clicks every button in Chromium (needs
    `pip install playwright && python -m playwright install chromium`; skips if missing). Add a test for every new control.
+6b. `python -m lakeaudit validate --lake hussain_sagar --kind osm_shoreline` → IoU 0.96, gap median 7 m / p95 36 m;
+   `validation-summary` ends with published error rate n = 0. Only gated notified FTLs on real runs count; OSM never does.
 7. `python -m lakeaudit run --lake alwal_cheruvu --offline` as the no-WiFi backup.
 Full script + Q&A: `REVIEW_DEMO.md`. Status table: `README.md`.
 
@@ -99,6 +101,7 @@ lakeaudit/provenance.py   run_id, git commit, params hash
 lakeaudit/store.py        GeoJSON/CSV writer + optional PostGIS loader
 lakeaudit/report.py       preview.png, area_by_year.png, map.html (Leaflet)
 lakeaudit/api.py          FastAPI: /lakes, /lake/{id}, /nearby, /lookup (abstains; optional lake_id); app at /, form at /classic
+lakeaudit/validate.py     our line vs a reference polygon: IoU, gap in metres (outer shoreline → any edge); `validate`, `validation-summary`
 lakeaudit/static/         app.html (map-first UI, single file) + leaflet/ (1.9.4 from the npm tarball, SRI-verified)
 lakeaudit/vendor/         same Leaflet, inlined by report.py into each outputs/<lake>/map.html
 lakeaudit/pipeline.py     run_lake(): the unit of work
