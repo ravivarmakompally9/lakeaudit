@@ -49,12 +49,15 @@
    python -m lakeaudit validate --lake hussain_sagar --kind osm_shoreline
    python -m lakeaudit validate --lake durgam_cheruvu --kind osm_shoreline
    python -m lakeaudit validate --lake nalla_cheruvu_kukatpally --kind osm_shoreline
+   python -m lakeaudit validate --lake gurram_cheruvu --kind osm_shoreline
    python -m lakeaudit validation-summary
    python -m lakeaudit validate --lake hussain_sagar --kind notified_ftl --reference sample_data/ftl_vertices_ocr_dropped_digit.csv --perimeter 1858.4
    ```
    Expected: IoU 0.96 / 0.86 / 0.84; gap median 7 / 10 / 8 m, p95 36 / 24 / 20 m; summary ends with
    `published error rate … n_lakes: 0 — not yet measured`. The last command prints **REFUSED — not compared**.
-   Open `outputs/hussain_sagar/validation_osm_shoreline.png`.
+   Gurram prints gap median 9 m, p95 30 m, plus `reference piece NOT in our line: 4.6 ac … 30 m from it`,
+   and its summary row shows `4.6 ac` under **missed**.
+   Open `outputs/hussain_sagar/validation_osm_shoreline.png` and `outputs/gurram_cheruvu/validation_osm_shoreline.png`.
 
 6. **Commit.** `git add -A && git commit -m "second review"`. The commit hash is now in every output row — show that.
 
@@ -87,6 +90,9 @@ Short on time: drop the first half of 6 (the area-class point); keep the 2.6 vs 
 **Live: how wrong can the line be (45 s).** In the app, open Hussain Sagar and scroll to *How wrong can this line be?*: the notified FTL box says *Not yet measured*, the OSM box shows IoU 0.96 · 7 m · 36 m. Then `validation_osm_shoreline.png` and `validation-summary`. (Restart `serve` after running `validate` the first time. After that, new records show without a restart.)
 *This is the machinery for the number nobody publishes: IoU and the gap in metres, point by point along the line. The darker the dot, the further the reference line is from ours. Today the reference is OSM's shoreline, and that is not the FTL, so the tool itself prints "does not count". The bottom line reads n = 0: the published error rate starts when the first gated HMDA sheet goes in. A sheet that fails the gates is refused, never compared.* Point at the worst gap: *a channel narrower than one 20 m pixel. That is exactly the kind of limit we publish.*
 
+**Live: two witnesses disagree about what the lake is (30 s).** In the app, open Gurram Cheruvu and scroll to the same box. It reads IoU 0.74 · 9 m · 30 m, then *Missed: a separate piece of this outline (4.6 ac) with no water in our line.* Then its `validation_osm_shoreline.png`: the pond is hatched, just west of the lake.
+*OpenStreetMap draws Gurram Cheruvu as two pieces: the lake, and a 4.6-acre pond 30 metres west of it. In no post-monsoon image since 2019 did Sentinel-2 see open water in that pond. Along the lake itself the two lines agree to a median of 9 metres. We don't average the pond into that edge number, and we don't hide it either: it is listed on its own. Whether the pond is dry, weed-covered, built on, or was never part of the lake, this witness cannot say. That is what the notified polygon and a field visit are for. Where witnesses disagree is the signal.*
+
 **Live: abstention (1 min).** The lookup page. 40 m accuracy → refuses, with the reason in plain words. 5 m → verdict. *This is the rule that makes the system safe to exist. Every other tool in this space answers anyway.*
 
 **Slide: what's next (30 s).** The table in README under "Honest status". Say the percentage out loud: *roughly a third of the build; the parts that are done are the parts everything else stands on.*
@@ -110,6 +116,8 @@ Short on time: drop the first half of 6 (the area-class point); keep the 2.6 vs 
 **"Where do the buildings come from?"** OpenStreetMap today, because it needs no setup. Google Open Buildings V3 is the production source and drops in as a config switch. OSM coverage is partial and Open Buildings' South Asia recall is about 77%, so counts are reported with that caveat — never as complete.
 
 **"How accurate is it?"** Against the notified FTL we don't know yet, and that is the honest answer this review should hear. Measuring it (blind, against the 765 notified polygons) is Slice 3, and the measuring tool is already built and tested: it recovers a known 20 m offset as 20 m. What we can say today: against OSM's mapped shoreline, which is not the FTL, our line is within a median 7–10 m (p95 20–36 m) on three lakes. On a synthetic lake with known area the pipeline recovers it within 3% (`tests/test_water.py`), and cloud-covered years are rejected rather than silently shrinking the lake.
+
+**"Gurram's gap is only 9 m, so why is its IoU just 0.74?"** IoU counts area, and the gap counts edge. Our line holds 29.0 acres and OSM's 38.7. Of the 9.7-acre difference, 4.6 is the detached pond we never saw water in, listed separately as *missed*; the rest is along the main lake's edge. Reporting the two separately is the point: "the edge is off by 9 m" and "a whole piece of the lake is missing" are different findings.
 
 **"What if OCR of the PDF fails?"** Then the gates fail and the sheet goes to manual entry. The system is designed so that a bad extraction cannot become a boundary. The PDF reader is best-effort until we have real sheets to tune it on.
 
