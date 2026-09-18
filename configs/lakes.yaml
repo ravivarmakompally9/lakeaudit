@@ -66,7 +66,7 @@ lakes:
     search_radius_m: 2500
     notification_status: unknown
     dispute: true
-    notes: "Named in the Feb 2026 HC order on FTL determination."
+    notes: "Named in the Feb 2026 HC order on FTL determination. NOT RUN: OSM (Sep 2026) has no polygon named Malkam within 2.5 km of the seed; needs a manually verified seed first."
 
   - id: ameenpur_cheruvu
     name: Ameenpur Cheruvu
@@ -150,20 +150,20 @@ lakes:
   - id: pedda_cheruvu_ramanthapur
     name: Pedda Cheruvu (Ramanthapur)
     district: Hyderabad
-    seed_lat: 17.3960
-    seed_lon: 78.5470
+    seed_lat: 17.40155        # OSM way 29252764 "Ramanthapur Cheruvu" (15.6 ac) — see notes: ASSUMED to be Pedda Cheruvu
+    seed_lon: 78.54028
     seed_verified: false
-    osm_name_regex: "(?i)pedda.?cheruvu"
+    osm_name_regex: "(?i)ramanthapur (cheruvu|lake)"
     search_radius_m: 3000
     notification_status: unknown
     dispute: false
-    notes: "HYDRAA/NRSA 54-lake study: 3,083,000 -> 114,000 sq m (about 4% of original)."
+    notes: "HYDRAA/NRSA 54-lake study: 3,083,000 -> 114,000 sq m (about 4% of original). OSM has no 'Pedda Cheruvu' at Ramanthapur (the only one within 3 km is at Nacharam, 78 ac). Seeded on OSM 'Ramanthapur Cheruvu', the larger of the two Ramanthapur tanks ('chinna cheruvu' = the small one, mapped separately). ASSUMPTION — confirm on the ground before citing."
 
   - id: gurram_cheruvu
     name: Gurram Cheruvu
     district: Hyderabad
-    seed_lat: 17.3300
-    seed_lon: 78.4830
+    seed_lat: 17.31823        # centroid of OSM relation 10207305 "Gurram Cheruvu" (38.7 ac); old seed 17.3300,78.4830 was ~1.1 km north
+    seed_lon: 78.48842
     seed_verified: false
     osm_name_regex: "(?i)gurram"
     search_radius_m: 3000
@@ -174,8 +174,8 @@ lakes:
   - id: uppal_nalla_cheruvu
     name: Nalla Cheruvu (Uppal)
     district: Medchal-Malkajgiri
-    seed_lat: 17.4010
-    seed_lon: 78.5590
+    seed_lat: 17.40329        # centroid of OSM way 28268709 "Nallacheruvu (Uppal Mini Tank Bund)" (50.0 ac); old seed 17.4010,78.5590 was ~1.8 km west
+    seed_lon: 78.57870
     seed_verified: false
     osm_name_regex: "(?i)nalla.?cheruvu"
     search_radius_m: 2500
