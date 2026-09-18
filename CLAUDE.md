@@ -33,6 +33,10 @@ What must work on the laptop tonight, in order:
    traces the lake in `outputs/hussain_sagar/preview.png` and `map.html`.
 2. `python -m lakeaudit run --lake nalla_cheruvu_kukatpally` — HYDRAA's official figure for this lake
    is **27 acres total, 14 encroached**; our max-extent acreage is compared against that in the demo.
+   Verified: max observed extent **13.7 ac** (2022 9.7 · 2024 10.2 · 2025 12.9; 2019–21, 2023 no open
+   water at MNDWI>0). ≈ the 13 ac HYDRAA says remain; S2-since-2019 cannot witness land built over
+   earlier — that is the case for Landsat 1984→. Area class from observed extent = small (9 m); on
+   HYDRAA's 27 ac (10.9 ha) it would be 30 m.
 3. `python -m lakeaudit run --lake durgam_cheruvu`
 4. `python -m lakeaudit serve` → http://localhost:8000 — show abstention (accuracy 40 → refuses; 5 → verdict).
 5. `python -m lakeaudit gates --csv sample_data/ftl_vertices_clean.csv --perimeter 1858.4` (PASS) and
@@ -57,15 +61,19 @@ Full script + Q&A: `REVIEW_DEMO.md`. Status table: `README.md`.
    (`register.UA`, `register.OVERPASS_MIRRORS`). Seed for Hussain Sagar resolves to OSM relation 2833155.
 2. **earth-search COGs are already BOA-offset-corrected, but STAC `raster:bands` still says
    `offset: -0.1`.** Applying it again made water reflectance negative and flipped MNDWI. `imagery.read_scene`
-   now applies the metadata offset only if <5 % of valid pixels would go negative; the log line
-   `bands: ... | metadata offset -0.1 NOT applied (...)` confirms. Verified: green ≈0.05, swir ≈0.008,
-   MNDWI ≈+0.7 over Hussain Sagar water.
+   decides ONCE per scene from the item property `earthsearch:boa_offset_applied` (true on every item
+   checked, baselines 05.00–05.11). The earlier per-band pixel heuristic offset SWIR but not green over
+   mostly-land ROIs and turned Kukatpally into "water" — don't bring it back. Log line:
+   `metadata offset -0.1 NOT applied (earthsearch:boa_offset_applied=true, baseline 05.xx)`.
 3. Otsu is run inside a per-lake ROI, never scene-global (bimodality fails when water <1 % of tile);
    degenerate Otsu falls back to threshold 0.0 and says so in `threshold_method`.
 4. OSM multipolygon relations with an outer ring split across several OPEN ways were closed way-by-way,
    drawing chords → truncated seed (Hussain Sagar 242 ha instead of 454 ha) → 600 m ROI clipped the
    water mask (930 ac instead of 1,081 ac). `register._rings` now stitches ways (linemerge+polygonize)
    and subtracts inner rings. Check: water extent must stay well inside the ROI edge.
+5. Small lakes in mostly-land ROIs: Otsu split land from land (thr −0.24…−0.31) and flooded ~300 ac.
+   `water.min_water_threshold: 0.0` clamps it (`otsu_clamped_floor`). If nothing touches the seed, the
+   year is recorded as no open water — never the largest blob elsewhere in the ROI.
 
 ## Repo map
 
