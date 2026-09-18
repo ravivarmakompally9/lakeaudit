@@ -1,0 +1,195 @@
+# Lake register — the ONLY place a lake is defined.
+# Adding a lake is adding a row here. The pipeline never hard-codes a lake.
+#
+# seed_lat / seed_lon are APPROXIMATE search seeds. On first run the pipeline
+# snaps each lake to the nearest OpenStreetMap water polygon whose name matches
+# `osm_name_regex` within `search_radius_m`, and records what it found.
+# `seed_verified: false` means nobody has yet confirmed the seed on a map — do
+# that before trusting any output for the lake.
+#
+# notification_status: final | preliminary | none | unknown   (from lakes.hmda.gov.in)
+# dispute: true when the boundary is the subject of live litigation / contempt.
+#
+# buffer widths follow the Telangana rule-book explainer (verify against the GO):
+#   area >= 10 ha  -> 30 m
+#   area <  10 ha  ->  9 m
+
+buffer_rule:
+  large_threshold_ha: 10
+  large_buffer_m: 30
+  small_buffer_m: 9
+
+lakes:
+  - id: nalla_cheruvu_kukatpally
+    name: Nalla Cheruvu (Kukatpally)
+    district: Medchal-Malkajgiri
+    seed_lat: 17.4935
+    seed_lon: 78.4005
+    seed_verified: false
+    osm_name_regex: "(?i)nalla.?cheruvu"
+    search_radius_m: 2500
+    notification_status: unknown
+    dispute: false
+    notes: "HYDRAA field finding Sep 2024: 27 acres total, 14 acres encroached. Best single lake for validating our area number."
+
+  - id: hussain_sagar
+    name: Hussain Sagar
+    district: Hyderabad
+    seed_lat: 17.4239
+    seed_lon: 78.4738
+    seed_verified: true
+    osm_name_regex: "(?i)hussain.?sagar"
+    search_radius_m: 3000
+    notification_status: unknown
+    dispute: false
+    notes: "Large, unambiguous water body. Sanity check for the water-index pipeline."
+
+  - id: durgam_cheruvu
+    name: Durgam Cheruvu
+    district: Rangareddy
+    seed_lat: 17.4283
+    seed_lon: 78.3893
+    seed_verified: true
+    osm_name_regex: "(?i)durgam.?cheruvu"
+    search_radius_m: 2500
+    notification_status: final
+    dispute: true
+    notes: "Three candidate extents in the record: 65 ac 12 gt (1970 PWD / 2005 HUDA), 83 ac, 160+ ac (2014 notification). L. Urmila Devi v. State of Telangana, 23 Sep 2024."
+
+  - id: malkam_cheruvu
+    name: Malkam Cheruvu (Raidurg)
+    district: Rangareddy
+    seed_lat: 17.4340
+    seed_lon: 78.3690
+    seed_verified: false
+    osm_name_regex: "(?i)malkam"
+    search_radius_m: 2500
+    notification_status: unknown
+    dispute: true
+    notes: "Named in the Feb 2026 HC order on FTL determination."
+
+  - id: ameenpur_cheruvu
+    name: Ameenpur Cheruvu
+    district: Sangareddy
+    seed_lat: 17.5270
+    seed_lon: 78.3340
+    seed_verified: false
+    osm_name_regex: "(?i)ameenpur"
+    search_radius_m: 3000
+    notification_status: unknown
+    dispute: true
+    notes: "Biodiversity heritage site; named in the Feb 2026 HC order."
+
+  - id: kapra_cheruvu
+    name: Kapra Lake
+    district: Medchal-Malkajgiri
+    seed_lat: 17.4790
+    seed_lon: 78.5590
+    seed_verified: false
+    osm_name_regex: "(?i)kapra"
+    search_radius_m: 2500
+    notification_status: unknown
+    dispute: false
+
+  - id: safilguda_cheruvu
+    name: Safilguda Lake
+    district: Medchal-Malkajgiri
+    seed_lat: 17.4640
+    seed_lon: 78.5340
+    seed_verified: false
+    osm_name_regex: "(?i)safilguda"
+    search_radius_m: 2500
+    notification_status: unknown
+    dispute: false
+
+  - id: saroornagar_cheruvu
+    name: Saroornagar Lake
+    district: Rangareddy
+    seed_lat: 17.3590
+    seed_lon: 78.5330
+    seed_verified: false
+    osm_name_regex: "(?i)saroor"
+    search_radius_m: 2500
+    notification_status: unknown
+    dispute: false
+
+  - id: mir_alam_tank
+    name: Mir Alam Tank
+    district: Hyderabad
+    seed_lat: 17.3480
+    seed_lon: 78.4400
+    seed_verified: false
+    osm_name_regex: "(?i)mir.?alam"
+    search_radius_m: 3000
+    notification_status: unknown
+    dispute: false
+    notes: "WRI/News Minute 2021 CORONA comparison: -23% since 1967."
+
+  - id: shamirpet_cheruvu
+    name: Shamirpet Lake
+    district: Medchal-Malkajgiri
+    seed_lat: 17.6160
+    seed_lon: 78.5730
+    seed_verified: false
+    osm_name_regex: "(?i)shamirpet"
+    search_radius_m: 3000
+    notification_status: unknown
+    dispute: false
+
+  - id: fox_sagar
+    name: Fox Sagar
+    district: Medchal-Malkajgiri
+    seed_lat: 17.5090
+    seed_lon: 78.4470
+    seed_verified: false
+    osm_name_regex: "(?i)fox.?sagar"
+    search_radius_m: 3000
+    notification_status: unknown
+    dispute: false
+
+  - id: pedda_cheruvu_ramanthapur
+    name: Pedda Cheruvu (Ramanthapur)
+    district: Hyderabad
+    seed_lat: 17.3960
+    seed_lon: 78.5470
+    seed_verified: false
+    osm_name_regex: "(?i)pedda.?cheruvu"
+    search_radius_m: 3000
+    notification_status: unknown
+    dispute: false
+    notes: "HYDRAA/NRSA 54-lake study: 3,083,000 -> 114,000 sq m (about 4% of original)."
+
+  - id: gurram_cheruvu
+    name: Gurram Cheruvu
+    district: Hyderabad
+    seed_lat: 17.3300
+    seed_lon: 78.4830
+    seed_verified: false
+    osm_name_regex: "(?i)gurram"
+    search_radius_m: 3000
+    notification_status: unknown
+    dispute: false
+    notes: "WRI/News Minute 2021 CORONA comparison: -55% since 1967."
+
+  - id: uppal_nalla_cheruvu
+    name: Nalla Cheruvu (Uppal)
+    district: Medchal-Malkajgiri
+    seed_lat: 17.4010
+    seed_lon: 78.5590
+    seed_verified: false
+    osm_name_regex: "(?i)nalla.?cheruvu"
+    search_radius_m: 2500
+    notification_status: unknown
+    dispute: false
+    notes: "HYDRAA restoration 52.30 -> 67.31 acres (Sep 2026 reporting)."
+
+  - id: alwal_cheruvu
+    name: Alwal Cheruvu
+    district: Medchal-Malkajgiri
+    seed_lat: 17.5040
+    seed_lon: 78.5080
+    seed_verified: false
+    osm_name_regex: "(?i)alwal"
+    search_radius_m: 2500
+    notification_status: unknown
+    dispute: false

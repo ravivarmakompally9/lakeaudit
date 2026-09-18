@@ -1,0 +1,134 @@
+"""python -m lakeaudit <command>
+
+  run       --lake ID [--offline] [--years 2021 2022]   one lake, end to end
+  run-all   [--offline]                                   every lake in the register
+  gates     --csv vertices.csv [--perimeter M]            run the 3 validity gates on a vertex table
+  pdf       --pdf sheet.pdf                               extract a vertex table from an HMDA PDF, then run gates
+  serve     [--port 8000]                                 start the lookup API + demo page
+  load-db   --lake ID --dsn postgresql://...              ingest a run into PostGIS
+  doctor                                                  check that the public data sources are reachable
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import logging
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _log():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-7s %(message)s", datefmt="%H:%M:%S")
+
+
+def cmd_run(a):
+    from .pipeline import run_lake
+    out = run_lake(ROOT, a.lake, offline=a.offline, years=a.years)
+    run = json.loads((out / "run.json").read_text())
+    print(json.dumps(run["summary"], indent=2))
+    print(f"\nopen: {out / 'map.html'}\n      {out / 'preview.png'}\n      {out / 'area_by_year.png'}")
+
+
+def cmd_run_all(a):
+    from .register import load_register
+    from .pipeline import run_lake
+    lakes, _ = load_register(ROOT / "configs" / "lakes.yaml")
+    for l in lakes:
+        try:
+            run_lake(ROOT, l.id, offline=a.offline, years=a.years)
+        except Exception as e:
+            logging.getLogger("lakeaudit").error("lake %s failed: %s", l.id, e)
+
+
+def cmd_gates(a):
+    from .ftl_extract.gates import run_gates, vertices_from_rows
+    rows = list(csv.DictReader(open(a.csv)))
+    rep = run_gates(vertices_from_rows(rows), a.perimeter)
+    print(json.dumps(rep.as_dict(), indent=2))
+    print("\nRESULT:", "PASS — admitted as a boundary candidate" if rep.passed else "FAIL — routed to manual entry")
+    sys.exit(0 if rep.passed else 2)
+
+
+def cmd_pdf(a):
+    from .ftl_extract.pdf_table import extract_vertex_rows
+    from .ftl_extract.gates import run_gates, vertices_from_rows
+    rows, unparsed, meta = extract_vertex_rows(Path(a.pdf))
+    print(json.dumps({"meta": meta, "rows_parsed": len(rows), "rows_unparsed": len(unparsed)}, indent=2))
+    if not rows:
+        print("no coordinate table recognised — send this sheet to manual entry"); sys.exit(2)
+    out = Path(a.pdf).with_suffix(".vertices.csv")
+    with out.open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["n", "lat", "lon", "dist_next_m"]); w.writeheader(); w.writerows(rows)
+    print("vertices →", out)
+    rep = run_gates(vertices_from_rows(rows), a.perimeter or meta.get("declared_perimeter_m"))
+    print(json.dumps(rep.as_dict(), indent=2))
+    print("\nRESULT:", "PASS" if rep.passed else "FAIL — routed to manual entry")
+
+
+def cmd_doctor(a):
+    import requests, yaml
+    cfg = yaml.safe_load((ROOT / "configs" / "thresholds.yaml").read_text())
+    checks = [
+        ("STAC catalogue (earth-search)", cfg["imagery"]["stac_url"], "get"),
+        ("Sentinel-2 COG bucket", "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/44/Q/LE/2024/11/", "get"),
+        ("Overpass (OSM)", "https://overpass-api.de/api/status", "get"),
+        ("OSM tiles (map background)", "https://tile.openstreetmap.org/12/2942/1868.png", "get"),
+    ]
+    ok = True
+    for name, url, _ in checks:
+        try:
+            r = requests.get(url, timeout=20)
+            good = r.status_code < 500
+            print(f"  {'OK  ' if good else 'FAIL'}  {name:34s} HTTP {r.status_code}")
+            ok &= good
+        except Exception as e:
+            ok = False
+            print(f"  FAIL  {name:34s} {type(e).__name__}: {e}")
+    try:
+        from pystac_client import Client
+        c = Client.open(cfg["imagery"]["stac_url"])
+        n = len(list(c.search(collections=[cfg["imagery"]["collection"]], bbox=[78.39, 17.48, 78.41, 17.50],
+                              datetime="2024-10-15/2024-12-31", max_items=3).items()))
+        print(f"  {'OK  ' if n else 'FAIL'}  STAC search over Kukatpally, Oct-Dec 2024: {n} scenes")
+        ok &= n > 0
+    except Exception as e:
+        ok = False
+        print(f"  FAIL  STAC search: {type(e).__name__}: {e}")
+    print("\nverdict:", "all sources reachable — run with real data" if ok else "something is blocked — use --offline for the demo and fix network after")
+    sys.exit(0 if ok else 1)
+
+
+def cmd_serve(a):
+    import uvicorn
+    uvicorn.run("lakeaudit.api:app", host="0.0.0.0", port=a.port, reload=False)
+
+
+def cmd_load_db(a):
+    from .store import load_postgis
+    load_postgis(ROOT / "outputs" / a.lake, a.dsn)
+    print("loaded", a.lake)
+
+
+def main(argv=None):
+    _log()
+    p = argparse.ArgumentParser(prog="lakeaudit", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sp = p.add_subparsers(dest="cmd", required=True)
+
+    r = sp.add_parser("run"); r.add_argument("--lake", required=True); r.add_argument("--offline", action="store_true")
+    r.add_argument("--years", nargs="*", type=int); r.set_defaults(fn=cmd_run)
+    ra = sp.add_parser("run-all"); ra.add_argument("--offline", action="store_true"); ra.add_argument("--years", nargs="*", type=int); ra.set_defaults(fn=cmd_run_all)
+    g = sp.add_parser("gates"); g.add_argument("--csv", required=True); g.add_argument("--perimeter", type=float); g.set_defaults(fn=cmd_gates)
+    pd = sp.add_parser("pdf"); pd.add_argument("--pdf", required=True); pd.add_argument("--perimeter", type=float); pd.set_defaults(fn=cmd_pdf)
+    s = sp.add_parser("serve"); s.add_argument("--port", type=int, default=8000); s.set_defaults(fn=cmd_serve)
+    sp.add_parser("doctor").set_defaults(fn=cmd_doctor)
+    d = sp.add_parser("load-db"); d.add_argument("--lake", required=True); d.add_argument("--dsn", required=True); d.set_defaults(fn=cmd_load_db)
+
+    a = p.parse_args(argv)
+    a.fn(a)
+
+
+if __name__ == "__main__":
+    main()

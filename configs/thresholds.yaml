@@ -1,0 +1,43 @@
+# Every tunable in one place. Changing a number here — never in code — is what
+# makes a run reproducible: the params hash of this file goes on every output row.
+
+imagery:
+  collection: sentinel-2-l2a            # earth-search.aws.element84.com, public, no account
+  stac_url: https://earth-search.aws.element84.com/v1
+  # Post-monsoon window: lake is fullest, skies are clearest. Hard constraint.
+  post_monsoon_start_mmdd: "10-15"
+  post_monsoon_end_mmdd: "12-31"
+  years: [2019, 2020, 2021, 2022, 2023, 2024, 2025]
+  max_cloud_cover_pct: 20               # scene-level filter from STAC metadata
+  roi_pad_m: 600                        # padding around the OSM seed polygon
+  # Sentinel-2 MNDWI = (B03 - B11)/(B03 + B11). B11 is 20 m, so the product is 20 m.
+  green_band: green                     # B03, 10 m
+  swir_band: swir16                     # B11, 20 m
+  work_resolution_m: 20                 # honest: MNDWI is a 20 m product on S2
+
+water:
+  index: mndwi
+  # Otsu is run INSIDE the padded ROI, never on the whole scene — the histogram
+  # must be bimodal, which fails when water is < ~1% of the tile.
+  threshold_method: otsu_roi
+  otsu_fallback_threshold: 0.0          # used only if Otsu fails (unimodal ROI)
+  min_water_patch_px: 12                # drop speckle smaller than this
+  keep_largest_component_only: true     # the lake, not roadside puddles
+  scl_cloud_classes: [3, 8, 9, 10]      # S2 scene classification: shadow, cloud med/high, cirrus
+  max_roi_cloud_fraction: 0.15          # reject a scene if ROI is more clouded than this
+
+boundary:
+  method: max_observed_extent           # union of all accepted post-monsoon masks
+  simplify_tolerance_m: 5
+
+structures:
+  source: osm_overpass                  # placeholder footprint source; swap to open_buildings_v3 by config
+  overpass_url: https://overpass-api.de/api/interpreter
+  # A building is "inside" a zone if its footprint intersects the zone polygon.
+  predicate: intersects
+
+abstention:
+  # Refuse to answer when the device's 95% GPS radius exceeds the distance to the
+  # nearest boundary line. The browser's Geolocation `accuracy` field is that radius.
+  rule: gps_accuracy_gt_distance
+  hard_max_accuracy_m: 100              # refuse outright beyond this, whatever the distance
