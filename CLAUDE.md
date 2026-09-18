@@ -37,7 +37,9 @@ What must work on the laptop tonight, in order:
    water at MNDWI>0). ≈ the 13 ac HYDRAA says remain; S2-since-2019 cannot witness land built over
    earlier — that is the case for Landsat 1984→. Area class from observed extent = small (9 m); on
    HYDRAA's 27 ac (10.9 ha) it would be 30 m.
-3. `python -m lakeaudit run --lake durgam_cheruvu`
+3. `python -m lakeaudit run --lake durgam_cheruvu` — verified: 68–78 ac/yr (2023: 54), max extent **81 ac**,
+   both basins (cable bridge at ~17.4315 splits them; needs the OSM seed, way 28131043, to keep both).
+   Record has 65 / 83 / 160+ ac candidates; ours is one witness, it does not pick between them.
 4. `python -m lakeaudit serve` → http://localhost:8000 — show abstention (accuracy 40 → refuses; 5 → verdict).
 5. `python -m lakeaudit gates --csv sample_data/ftl_vertices_clean.csv --perimeter 1858.4` (PASS) and
    `..._ocr_dropped_digit.csv` (FAIL gate 1).
@@ -113,6 +115,8 @@ Don't rebuild things that work. If a lake's outline lands on the wrong water bod
 
 ## Known things that may bite tonight
 
+- OSM seeds are cached in `cache/seeds/<lake>.geojson` (committed) — runs no longer need Overpass for
+  seeds. Delete a file to refetch. Buildings still come from Overpass live.
 - Overpass rate-limits: if `fetch_osm_buildings` fails, the run still completes with zero structures and
   logs a warning — rerun after a minute.
 - `seed_verified: false` lakes: OSM name regex may match the wrong water body; check `preview.png`.
