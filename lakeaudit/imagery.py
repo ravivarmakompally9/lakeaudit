@@ -120,28 +120,28 @@ def read_scene(item, grid: Grid, cfg: dict, year: int) -> Scene:
     # processing baseline >= 04.00. The STAC raster:bands metadata carries it.
     offset_note = {}
 
+    # The earth-search COGs on sentinel-cogs already have the BOA_ADD_OFFSET
+    # removed (item property earthsearch:boa_offset_applied=true), while the STAC
+    # raster:bands metadata still declares offset=-0.1. Applying it again pushes
+    # water reflectance negative and flips MNDWI. Decide ONCE per scene from the
+    # item property, never per band from pixel content: a per-band guess once
+    # offset SWIR but not green over a mostly-land ROI and turned land into water.
+    boa_applied = item.properties.get("earthsearch:boa_offset_applied")
+    baseline = item.properties.get("s2:processing_baseline")
+
     def _scale(arr, asset, name):
-        """DN -> reflectance. The earth-search COGs on sentinel-cogs already have
-        the BOA_ADD_OFFSET removed, while the STAC raster:bands metadata still
-        declares offset=-0.1. Applying it again pushes water reflectance negative
-        and flips MNDWI. So: apply the metadata offset ONLY if doing so leaves the
-        image physically plausible (reflectance is never meaningfully negative)."""
+        """DN -> reflectance, applying the metadata offset only if the data still carries it."""
         rb = (asset.extra_fields or {}).get("raster:bands", [{}])
         scale = rb[0].get("scale", 0.0001) if rb else 0.0001
         offset = rb[0].get("offset", 0.0) if rb else 0.0
         valid = arr != 0
-        raw = arr * scale
-        if offset:
-            cand = raw + offset
-            neg = float((cand[valid] < -0.005).mean()) if valid.any() else 0.0
-            if neg > 0.05:
-                offset_note[name] = f"metadata offset {offset} NOT applied ({neg:.0%} px would go negative — COG already offset-corrected)"
-                out = raw
-            else:
-                offset_note[name] = f"metadata offset {offset} applied"
-                out = cand
-        else:
-            out = raw
+        out = arr * scale
+        if offset and boa_applied is False:
+            out = out + offset
+            offset_note[name] = f"metadata offset {offset} applied (earthsearch:boa_offset_applied=false, baseline {baseline})"
+        elif offset:
+            why = "true" if boa_applied else "absent — assuming corrected, as on every earth-search v1 item checked"
+            offset_note[name] = f"metadata offset {offset} NOT applied (earthsearch:boa_offset_applied={why}, baseline {baseline})"
         out[~valid] = np.nan  # nodata
         return out
 
