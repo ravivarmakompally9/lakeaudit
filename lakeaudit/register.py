@@ -3,20 +3,25 @@ from OpenStreetMap. The OSM polygon is only a SEED for the region of interest �
 it is never used as a boundary."""
 from __future__ import annotations
 
+import json
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
 import yaml
-from shapely.geometry import LineString, Point, Polygon, MultiPolygon, shape
+from shapely.geometry import LineString, Point, Polygon, MultiPolygon, mapping, shape
 from shapely.ops import linemerge, polygonize, unary_union
 
 from .geo import utm_crs_for, to_utm, to_wgs, area_m2
 
 log = logging.getLogger("lakeaudit")
 UA = {"User-Agent": "lakeaudit/0.2 (academic research; Vardhaman College of Engineering; contact via repo)"}
+# One OSM fetch per lake, reused after that: Overpass 504s for minutes at a time.
+# Keyed on the register row, so editing seed_lat/lon or the regex refetches.
+SEED_CACHE = Path(__file__).resolve().parent.parent / "cache" / "seeds"
 OVERPASS_MIRRORS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"]
 
 
@@ -108,9 +113,23 @@ def _rings(members: list[dict], role: str):
     return unary_union(polys) if polys else None
 
 
+def _seed_key(lake: Lake) -> dict:
+    return {"seed_lat": lake.seed_lat, "seed_lon": lake.seed_lon,
+            "osm_name_regex": lake.osm_name_regex, "search_radius_m": lake.search_radius_m}
+
+
 def resolve_seed(lake: Lake, overpass_url: str, timeout: int = 90) -> Lake:
     """Snap the lake to the nearest matching OSM water polygon. Falls back to a
     circle if OSM is unreachable or nothing matches — and says so."""
+    cache = SEED_CACHE / f"{lake.id}.geojson"
+    if cache.exists():
+        c = json.loads(cache.read_text())
+        pr = c["properties"]
+        if all(pr.get(k) == v for k, v in _seed_key(lake).items()):
+            lake.seed_polygon = shape(c["geometry"])
+            lake.seed_source = f"{pr['seed_source']}_cached_{pr['fetched_utc'][:10]}"
+            lake.seed_osm_ids = pr["osm_ids"]
+            return lake
     q = _OVERPASS_Q.format(r=lake.search_radius_m, lat=lake.seed_lat, lon=lake.seed_lon)
     polys = []
     urls = [overpass_url] + [u for u in OVERPASS_MIRRORS if u != overpass_url]
@@ -139,6 +158,10 @@ def resolve_seed(lake: Lake, overpass_url: str, timeout: int = 90) -> Lake:
         lake.seed_polygon = poly
         lake.seed_source = "osm" + ("" if named else "_unnamed_nearest")
         lake.seed_osm_ids = [osm_id]
+        SEED_CACHE.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps({"type": "Feature", "geometry": mapping(poly), "properties": {
+            **_seed_key(lake), "seed_source": lake.seed_source, "osm_ids": lake.seed_osm_ids, "osm_name": name,
+            "fetched_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ")}}))
         return lake
 
     # fallback: 400 m circle — clearly labelled
