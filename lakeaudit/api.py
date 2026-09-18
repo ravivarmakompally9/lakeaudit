@@ -110,7 +110,7 @@ def lookup(lat: float = Query(...), lon: float = Query(...), accuracy_m: float =
 
 
 _DEMO = """<!doctype html><meta charset=utf-8><title>lakeaudit lookup</title>
-<style>body{font:15px system-ui;max-width:640px;margin:40px auto;padding:0 16px}input{width:100%;padding:8px;margin:4px 0 12px;font-size:15px}button{padding:10px 16px;font-size:15px}pre{background:#f3f5f4;padding:12px;overflow:auto;border-radius:4px}.ab{color:#a8123a;font-weight:600}</style>
+<meta name=color-scheme content=light><style>:root{color-scheme:light}body{font:15px system-ui;max-width:640px;margin:40px auto;padding:0 16px;background:#fff;color:#111}input{width:100%;padding:8px;margin:4px 0 12px;font-size:15px}button{padding:10px 16px;font-size:15px}pre{background:#f3f5f4;padding:12px;overflow:auto;border-radius:4px}.ab{color:#a8123a;font-weight:600}</style>
 <h2>Where am I relative to the nearest lake boundary?</h2>
 <label>Latitude<input id=lat value="17.4239"></label><label>Longitude<input id=lon value="78.4738"></label>
 <label>GPS accuracy (m) — the browser's 95% radius<input id=acc value="12"></label>
