@@ -1,6 +1,7 @@
 """Two things a reviewer can look at without a server: a static PNG of the lake
 (water by year, extent, buffer, buildings by zone) and the year-by-year area
-chart. Plus an interactive Leaflet map that works when there is internet."""
+chart. Plus an interactive Leaflet map (Leaflet inlined — opens offline; only the
+basemap tiles need internet)."""
 from __future__ import annotations
 
 import json
@@ -100,8 +101,8 @@ def render_area_chart(out_dir: Path, title: str, source: str) -> Path:
 
 _LEAFLET = """<!doctype html><html><head><meta charset="utf-8"><title>{title}</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>{leaflet_css}</style>
+<script>{leaflet_js}</script>
 <style>html,body,#m{{height:100%;margin:0}} .lg{{background:#fff;padding:8px 10px;font:12px system-ui;line-height:1.6;border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.3)}} .sw{{display:inline-block;width:14px;height:10px;margin-right:6px;vertical-align:middle}} .warn{{background:#a8123a;color:#fff;padding:6px 10px;font:13px system-ui;border-radius:4px}}</style>
 </head><body><div id="m"></div>
 <script>
@@ -135,10 +136,18 @@ m.fitBounds(ext.getBounds().isValid()?ext.getBounds().pad(.4):seed.getBounds().p
 </script></body></html>"""
 
 
+# Leaflet 1.9.4 (BSD-2, see vendor/leaflet-1.9.4/LICENSE), inlined so map.html opens with no network.
+# SRI-verified against leafletjs.com: js sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=,
+# css sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=. Only the basemap tiles still need a network.
+_LEAFLET_DIR = Path(__file__).resolve().parent / "vendor" / "leaflet-1.9.4"
+
+
 def render_map(out_dir: Path, title: str, source: str) -> Path:
     b = (out_dir / "boundary.geojson").read_text()
     w = (out_dir / "water_by_year.geojson").read_text()
     s = (out_dir / "structures.geojson").read_text()
     p = out_dir / "map.html"
-    p.write_text(_LEAFLET.format(title=title, boundary=b, water=w, structures=s, source=source))
+    p.write_text(_LEAFLET.format(title=title, boundary=b, water=w, structures=s, source=source,
+                                 leaflet_css=(_LEAFLET_DIR / "leaflet.css").read_text(),
+                                 leaflet_js=(_LEAFLET_DIR / "leaflet.js").read_text()))
     return p
