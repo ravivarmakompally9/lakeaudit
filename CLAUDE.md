@@ -24,7 +24,10 @@ rate and an abstention threshold, built on a reproducible reconstruction pipelin
 - Every output row carries `run_id`, `code_commit`, `params_hash`, scene ids. Never remove that.
 - The API abstains when GPS accuracy > distance to boundary. Never remove that.
 - Synthetic (`--offline`) output is stamped SYNTHETIC and is never presented as a result (API `/lookup`
-  adds `synthetic: true` and prefixes the plain-language verdict).
+  adds `synthetic: true` and prefixes the plain-language verdict; the app draws a synthetic lake only with
+  the basemap hidden, never over real streets).
+- The app's "Notified FTL (HMDA)" layer stays disabled (`official_ftl.available: false`) until real polygons
+  are extracted. Nothing stands in for it. A lake with no run does not appear in `/lakes`.
 
 ## Second review is TOMORROW (Sept 19, 2026). Goal: demo ~35% working.
 
@@ -41,10 +44,15 @@ What must work on the laptop tonight, in order:
 3. `python -m lakeaudit run --lake durgam_cheruvu` — verified: 68–78 ac/yr (2023: 54), max extent **81 ac**,
    both basins (cable bridge at ~17.4315 splits them; needs the OSM seed, way 28131043, to keep both).
    Record has 65 / 83 / 160+ ac candidates; ours is one witness, it does not pick between them.
-4. `python -m lakeaudit serve` → http://localhost:8000 — show abstention (accuracy 40 → refuses; 5 → verdict).
+4. `python -m lakeaudit serve` → http://localhost:8000 — the map-first app (`lakeaudit/static/app.html`).
+   Show abstention: "Enter or place a point instead" → 17.430068, 78.486859 (Hussain Sagar east shore, 20 m
+   outside the extent) → accuracy 40 refuses, 5 gives `in_buffer`. The old form page is at `/classic`.
+   Walkthrough + screenshots: `python scripts/ui_walkthrough.py` (Playwright, 1400×900 and 390×844, mocked GPS
+   17.4935, 78.4043 ±35 m → Nalla Cheruvu 1.48 km, outside) → `docs/screenshots/`.
 5. `python -m lakeaudit gates --csv sample_data/ftl_vertices_clean.csv --perimeter 1858.4` (PASS) and
    `..._ocr_dropped_digit.csv` (FAIL gate 1).
-6. `python -m pytest -q tests` → 10 passed (pytest now in requirements.txt).
+6. `python -m pytest -q tests` → 16 passed (pytest + httpx in requirements.txt; `test_api.py` builds a temp
+   outputs tree from `--offline` runs).
 7. `python -m lakeaudit run --lake alwal_cheruvu --offline` as the no-WiFi backup.
 Full script + Q&A: `REVIEW_DEMO.md`. Status table: `README.md`.
 
@@ -87,16 +95,21 @@ lakeaudit/register.py     load register, resolve OSM seed polygon (fallback circ
 lakeaudit/imagery.py      STAC search, post-monsoon window, WarpedVRT window reads onto 20 m UTM grid
 lakeaudit/water.py        MNDWI, ROI-windowed Otsu, mask -> polygon, per-year WaterResult
 lakeaudit/boundary.py     max observed extent + buffer ring by area class
-lakeaudit/structures.py   OSM buildings -> inside_ftl / in_buffer / outside, distance to extent
+lakeaudit/structures.py   OSM buildings -> inside_extent / in_buffer / outside, distance to extent
 lakeaudit/provenance.py   run_id, git commit, params hash
 lakeaudit/store.py        GeoJSON/CSV writer + optional PostGIS loader
 lakeaudit/report.py       preview.png, area_by_year.png, map.html (Leaflet)
-lakeaudit/api.py          FastAPI /lookup with abstention; demo page at /
+lakeaudit/api.py          FastAPI: /lakes, /lake/{id}, /nearby, /lookup (abstains; optional lake_id); app at /, form at /classic
+lakeaudit/static/         app.html (map-first UI, single file) + leaflet/ (1.9.4 from the npm tarball, SRI-verified)
+lakeaudit/vendor/         same Leaflet, inlined by report.py into each outputs/<lake>/map.html
 lakeaudit/pipeline.py     run_lake(): the unit of work
 lakeaudit/cli.py          run | run-all | gates | pdf | serve | doctor | debug | load-db
 lakeaudit/ftl_extract/    gates.py (3 validity gates, tested) + pdf_table.py (best-effort HMDA PDF reader)
 lakeaudit/sample_data.py  synthetic shrinking lake for --offline
-tests/                    10 tests: gates catch OCR damage; water recovers area within 3 %; cloudy year rejected
+tests/                    16 tests: gates catch OCR damage; water recovers area within 3 %; cloudy year rejected;
+                          API lists only lakes a run produced, /nearby + /lookup(lake_id), abstention intact
+scripts/ui_walkthrough.py Playwright drive of the app, desktop + phone; fails on console errors / targets < 44 px
+docs/screenshots/         walkthrough screenshots (home, lake, located, 40 m refusal, 5 m verdict, layers)
 outputs/<lake_id>/        run.json, water_by_year.csv/.geojson, boundary.geojson, structures.geojson, preview.png, map.html
 ```
 

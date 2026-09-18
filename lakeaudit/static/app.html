@@ -1,0 +1,769 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>lakeaudit · lake edge screening</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/static/leaflet/leaflet.css">
+<style>
+:root{
+  --paper:#eef1f0; --surface:#f9fbfa; --ink:#0e1b1d; --teal:#0a6f7d; --red:#a8123a; --ochre:#956426; --green:#2f6b4f;
+  --muted:#4b5b5e; --faint:#7b898b; --line:#d3dbd9; --grey:#667679;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --cond:"IBM Plex Sans Condensed","Arial Narrow","Roboto Condensed",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --panel-w:400px; --layers-w:252px; --gap:16px; --radius:10px; --brand-h:56px;
+  --shadow:0 1px 2px rgba(14,27,29,.08),0 8px 28px rgba(14,27,29,.16);
+  --sheet-h:0px;
+  color-scheme:light;
+}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);font:15px/1.45 var(--sans);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- map ---------- */
+#map{position:fixed;inset:0;background:var(--paper)}
+#map.placing,#map.placing .leaflet-interactive{cursor:crosshair}
+.leaflet-container{font:inherit;background:var(--paper)}
+.leaflet-control-zoom a{width:44px!important;height:44px!important;line-height:44px!important;font-size:22px!important}
+/* stacked vector panes must not swallow clicks meant for the panes below them */
+.leaflet-pane > svg{pointer-events:none}
+.lake-tip{background:var(--surface);border:1px solid var(--line);border-radius:4px;color:var(--ink);font:600 12.5px/1.2 var(--cond);letter-spacing:.02em;box-shadow:0 1px 3px rgba(14,27,29,.15);padding:3px 7px}
+.lake-tip.syn{color:var(--red)}
+.leaflet-tooltip-right.lake-tip::before{border-right-color:var(--line)}
+.z-hi .lake-tip{display:none}
+.me-tip{background:var(--ink);color:#fff;border:0;font:500 12px/1.2 var(--mono);box-shadow:none;padding:3px 7px}
+.leaflet-tooltip-top.me-tip::before{border-top-color:var(--ink)}
+.leaflet-popup-content-wrapper{border-radius:8px}
+.leaflet-popup-content{font:13px/1.45 var(--sans);margin:12px 14px;min-width:220px}
+.pz{font:600 15px/1.2 var(--cond);margin-bottom:2px}
+.pk{font:12px var(--mono);color:var(--muted);margin-bottom:6px;overflow-wrap:anywhere}
+.pdl{display:grid;grid-template-columns:auto 1fr;gap:1px 10px;margin:0;font:12px/1.5 var(--mono)}
+.pdl dt{color:var(--faint)} .pdl dd{margin:0;overflow-wrap:anywhere}
+.pnote{margin:8px 0 0;font-size:12px;color:var(--muted)}
+
+/* ---------- brand ---------- */
+.brand{position:fixed;z-index:1001;top:var(--gap);left:var(--gap);width:var(--panel-w);height:var(--brand-h);display:flex;align-items:center;gap:12px;padding:0 14px;background:var(--ink);color:#f3f6f5;border-radius:var(--radius);box-shadow:var(--shadow)}
+.brand svg{flex:none}
+.brand .word{font:700 20px/1 var(--cond);letter-spacing:.01em}
+.brand .meta{font:500 12px/1.3 var(--mono);color:#b7c6c4;margin-top:4px}
+.brand .meta .syn{color:#ff9fb6}
+
+/* ---------- panel ---------- */
+.panel{position:fixed;z-index:1000;top:calc(var(--gap) + var(--brand-h) + 10px);left:var(--gap);bottom:var(--gap);width:var(--panel-w);overflow:auto;overscroll-behavior:contain;background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 18px 22px}
+.grip{display:none}
+.h1{font:600 23px/1.18 var(--cond);margin:0 0 8px;letter-spacing:.003em}
+.h2{font:600 12.5px/1.2 var(--cond);text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:22px 0 8px}
+.lede{margin:0 0 16px;color:var(--muted);font-size:14.5px}
+.lede strong{color:var(--ink);font-weight:600}
+.small{font-size:13px} .muted{color:var(--muted)} .mono{font-family:var(--mono)}
+.status{margin:6px 0;color:var(--muted)}
+.status.err{color:var(--red);font-weight:500}
+
+.btn{min-height:44px;padding:10px 14px;border:1px solid var(--line);background:#fff;border-radius:8px;cursor:pointer;font-weight:500;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:center;line-height:1.2}
+.btn:hover{border-color:#b3c0bd;background:#f3f7f6}
+.btn-primary{background:var(--teal);border-color:var(--teal);color:#fff}
+.btn-primary:hover{background:#085c68;border-color:#085c68}
+.btn-ink{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn-ink:hover{background:#1d3033;border-color:#1d3033}
+.btn-xl{width:100%;min-height:58px;font:600 18px/1 var(--sans);letter-spacing:.005em}
+.btn-wide{width:100%;margin-top:8px}
+.btn[aria-pressed="true"]{background:#e2eff0;border-color:var(--teal);color:var(--teal)}
+.btn-back{min-height:44px;display:inline-flex;align-items:center;gap:6px;background:none;border:0;padding:0 6px 0 2px;margin:-10px 0 4px -2px;color:var(--teal);font-weight:600;cursor:pointer;border-radius:6px}
+.btn-back:hover{background:#e8f1f1}
+
+details.manual{margin-top:12px;border:1px solid var(--line);border-radius:8px;background:#fff}
+details.manual summary{min-height:48px;display:flex;align-items:center;padding:0 14px;cursor:pointer;font-weight:500;list-style:none}
+details.manual summary::-webkit-details-marker{display:none}
+details.manual summary::after{content:"";margin-left:auto;width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg) translate(-2px,-2px);transition:transform .15s}
+details.manual[open] summary::after{transform:rotate(-135deg)}
+.manual .body{padding:0 14px 14px}
+.field{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-top:10px}
+.field input{display:block;width:100%;min-height:44px;margin-top:4px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;font:15px var(--mono);color:var(--ink)}
+.field input:focus{border-color:var(--teal)}
+.field .hint{font-weight:400;color:var(--faint)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.row > .btn{flex:1 1 140px}
+.formerr{margin:10px 0 0;color:var(--red);font-size:13px;font-weight:500}
+
+.tiles{display:grid;gap:8px;margin:18px 0 0}
+.tiles3{grid-template-columns:repeat(3,1fr)}
+.tile{background:var(--paper);border-radius:8px;padding:10px 10px 11px;min-height:86px}
+.tile b{display:block;font:600 23px/1.05 var(--cond);color:var(--ink)}
+.tile span{display:block;font-size:12px;line-height:1.3;color:var(--muted);margin-top:5px}
+.tile.accent b{color:var(--red)}
+
+.list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.item{width:100%;min-height:58px;text-align:left;display:grid;grid-template-columns:14px 1fr auto;gap:10px;align-items:center;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer}
+.item:hover{border-color:var(--teal);background:#fbfdfd}
+.item .dot{width:12px;height:12px;border-radius:50%;border:2.5px solid var(--red);background:#fff}
+.item .dot.syn{border-color:var(--grey);border-style:dashed}
+.item .nm{display:block;font-weight:600;line-height:1.25}
+.item .sub{display:block;font-size:12.5px;color:var(--muted);margin-top:1px}
+.item .val{font:500 13px/1.3 var(--mono);text-align:right;white-space:nowrap}
+.item .val small{display:block;font:600 11px/1.3 var(--cond);letter-spacing:.05em;text-transform:uppercase}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 2px}
+.chip{display:inline-flex;align-items:center;min-height:26px;padding:3px 9px;border-radius:999px;font:600 11.5px/1.2 var(--cond);letter-spacing:.05em;text-transform:uppercase;background:var(--paper);color:var(--muted);border:1px solid var(--line)}
+.chip.red{background:#f8e8ed;color:var(--red);border-color:#ebc3ce}
+.chip.ochre{background:#f6eee3;color:var(--ochre);border-color:#e4d3ba}
+.chip.teal{background:#e3f0f1;color:var(--teal);border-color:#bfdadd}
+.chip.syn{background:var(--red);color:#fff;border-color:var(--red)}
+
+.card{border-radius:8px;padding:14px;margin-top:12px}
+.kicker{font:600 11.5px/1 var(--cond);letter-spacing:.12em;text-transform:uppercase;opacity:.8;margin-bottom:8px}
+.card.dark{background:var(--ink);color:#e7eeed}
+.card.dark .kicker{color:#9fb3b1;opacity:1}
+.sure dl{display:grid;grid-template-columns:1fr auto;gap:6px 12px;margin:0}
+.sure dt{color:#b7c6c4;font-size:13px;line-height:1.3}
+.sure dt small{display:block;color:#83989a;font-size:11.5px}
+.sure dd{margin:0;font:500 16px/1.2 var(--mono);text-align:right;align-self:center}
+.scale{position:relative;height:34px;margin:16px 2px 4px;border-bottom:1px solid #3c5356}
+.scale .band{position:absolute;left:0;bottom:6px;height:16px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.55);border-left:0;border-radius:0 3px 3px 0}
+.scale .you{position:absolute;left:-5px;bottom:9px;width:10px;height:10px;border-radius:50%;background:#fff}
+.scale .ln{position:absolute;top:0;bottom:-5px;width:3px;margin-left:-1.5px;background:#ff5b80;border-radius:2px}
+.scale-l{display:flex;justify-content:space-between;font:11.5px var(--mono);color:#9fb3b1}
+.answer{font:600 17px/1.3 var(--cond);margin:12px 0 0;display:flex;gap:8px;align-items:baseline}
+.answer.yes{color:#9be0c1} .answer.no{color:#ff9fb6}
+.answer + p{margin:4px 0 0;font-size:13.5px;color:#c9d6d4}
+.card.refusal{background:#fff;border:2px solid var(--red)}
+.card.refusal h3{color:var(--red);font:600 19px/1.2 var(--cond);margin:0 0 6px}
+.card.refusal p{margin:0}
+.card.verdict{background:#fff;border:1px solid var(--line);border-left:7px solid var(--zc)}
+.card.verdict h3{color:var(--zc);font:600 21px/1.2 var(--cond);margin:0 0 6px}
+.card.verdict p{margin:0 0 8px}
+.z-outside{--zc:var(--green)} .z-in_buffer{--zc:var(--ochre)} .z-inside_extent{--zc:var(--red)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0;font-size:13.5px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-family:var(--mono);text-align:right}
+.kv dd small{display:block;font:12px/1.3 var(--sans);color:var(--muted)}
+.card.note{background:var(--paper)}
+.card.note b{font-weight:600}
+
+.prov{margin-top:12px;padding:12px;border-radius:8px;background:var(--paper);font:12px/1.5 var(--mono);color:var(--muted)}
+.prov dl{display:grid;grid-template-columns:auto 1fr;gap:1px 10px;margin:6px 0 0}
+.prov dt{color:var(--faint)} .prov dd{margin:0;color:var(--ink);overflow-wrap:anywhere}
+.prov p{margin:8px 0 0;font:12.5px/1.45 var(--sans)}
+.prov details summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font:12px var(--mono);color:var(--teal)}
+
+.bars{display:flex;align-items:flex-end;gap:6px;height:128px;margin-top:6px}
+.bar{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:0}
+.bar .v{font:500 10.5px/1 var(--mono);color:var(--ink);margin-bottom:4px;white-space:nowrap}
+.bar .col{width:100%;background:var(--teal);border-radius:3px 3px 0 0;min-height:2px}
+.bar.gap .col{background:transparent;border:1.5px dashed var(--faint);border-radius:3px}
+.bar.gap .v,.bar.nowater .v{color:var(--faint);font-size:9.5px}
+.bar.nowater .col{background:transparent;border-top:2.5px dotted var(--ochre);border-radius:0;min-height:0;height:0}
+.axis{display:flex;gap:6px;border-top:1px solid var(--line);padding-top:4px}
+.axis span{flex:1;text-align:center;font:11px var(--mono);color:var(--muted)}
+.legend-s{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px;font-size:12px;color:var(--muted)}
+.legend-s i{display:inline-block;width:14px;height:10px;margin-right:5px;vertical-align:-1px}
+
+.wit{list-style:none;padding:0;margin:0;display:grid;gap:10px}
+.wit li{display:grid;grid-template-columns:30px 1fr;gap:10px;align-items:start}
+.wit .mk{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:700 15px/1 var(--mono)}
+.wit .ok{background:#e2efe8;color:var(--green)} .wit .no{background:var(--paper);color:var(--muted)} .wit .q{background:#f6eee3;color:var(--ochre)}
+.wit b{display:block;font-weight:600;line-height:1.3}
+.wit span{display:block;font-size:13px;color:var(--muted)}
+
+/* ---------- layers ---------- */
+.layers{position:fixed;z-index:1002;top:var(--gap);right:var(--gap);width:var(--layers-w);background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow)}
+.layers-toggle{display:none}
+.layers-body{padding:10px 14px 12px;max-height:calc(100vh - 2*var(--gap));overflow:auto}
+.layers fieldset{border:0;padding:0;margin:0 0 6px;min-width:0}
+.layers legend{font:600 11.5px/1 var(--cond);text-transform:uppercase;letter-spacing:.12em;color:var(--muted);padding:6px 0 2px}
+.opt{display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer;font-size:14px;line-height:1.2}
+.opt input{width:20px;height:20px;margin:0;accent-color:var(--teal);flex:none;cursor:inherit}
+.opt.disabled{color:var(--faint);cursor:not-allowed}
+.opt .src{margin-left:auto;font-size:11px;color:var(--faint)}
+.opt .lbl{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.opt .lbl .badge{margin-left:0}
+.badge{margin-left:auto;font:600 10.5px/1.1 var(--cond);text-transform:uppercase;letter-spacing:.06em;padding:3px 6px;border-radius:4px;background:#e6ebea;color:var(--muted);white-space:nowrap}
+.sw{width:18px;height:12px;border-radius:2px;flex:none}
+.sw-extent{border:2.5px solid var(--red);background:rgba(168,18,58,.08)}
+.sw-buffer{border:1.5px dashed var(--ochre);background:rgba(149,100,38,.28)}
+.sw-ftl{border:2px solid #a3adaf;background:repeating-linear-gradient(45deg,#e3e8e7 0 3px,#fff 3px 6px)}
+.sw-seed{border:1.5px dashed var(--grey);background:transparent}
+.sw-water{background:var(--teal);opacity:.6}
+.sw-struct{background:linear-gradient(90deg,var(--red) 0 33%,var(--ochre) 33% 66%,var(--grey) 66%)}
+.sw-me{width:12px;height:12px;margin:0 3px;border-radius:50%;background:var(--ink);box-shadow:0 0 0 3px rgba(14,27,29,.22)}
+.yearrow{padding:0 0 2px 30px}
+.yearrow label{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--muted)}
+.yearrow output{font:600 14px var(--mono);color:var(--ink)}
+.yearrow input{width:100%;min-height:44px;margin:0;accent-color:var(--teal)}
+.yearnote{font-size:11.5px;color:var(--faint);margin:-6px 0 4px}
+
+/* ---------- overlays ---------- */
+.disclaimer{position:fixed;z-index:999;left:calc(var(--panel-w) + 2*var(--gap));right:calc(var(--gap) + 64px);bottom:28px;display:flex;justify-content:center;pointer-events:none}
+.disclaimer span{pointer-events:auto;background:rgba(14,27,29,.9);color:#f3f6f5;padding:9px 16px;border-radius:999px;font-size:12.5px;line-height:1.35;text-align:center;box-shadow:var(--shadow)}
+.banner{position:fixed;z-index:1003;top:var(--gap);left:50%;transform:translateX(-50%);max-width:calc(100vw - var(--panel-w) - var(--layers-w) - 6*var(--gap));margin-left:calc((var(--panel-w) - var(--layers-w))/2);background:var(--red);color:#fff;font:600 13px/1.3 var(--cond);letter-spacing:.06em;text-transform:uppercase;padding:10px 14px;border-radius:8px;box-shadow:var(--shadow);text-align:center}
+.banner.info{background:var(--ink);text-transform:none;letter-spacing:0;font:500 13.5px/1.3 var(--sans)}
+
+/* ---------- phone: bottom sheet ---------- */
+@media (max-width:760px){
+  :root{--gap:10px;--brand-h:48px}
+  .brand{width:auto;right:calc(var(--gap) + 100px);padding:0 12px;gap:10px}
+  .brand svg{width:22px;height:22px}
+  .brand .word{font-size:17px}
+  .brand .meta{font-size:10.5px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .panel{top:auto;left:0;right:0;bottom:0;width:auto;max-height:58vh;border-radius:16px 16px 0 0;padding:6px 16px calc(18px + env(safe-area-inset-bottom))}
+  .grip{display:block;width:44px;height:5px;border-radius:3px;background:#c5cfcc;margin:2px auto 12px}
+  .h1{font-size:20px}
+  .layers{width:auto}
+  .layers-toggle{display:flex;align-items:center;justify-content:center;gap:8px;min-height:var(--brand-h);min-width:90px;padding:0 14px;border:0;background:transparent;border-radius:var(--radius);font:600 14px var(--sans);cursor:pointer}
+  .layers-body{display:none;width:268px;max-height:calc(100vh - var(--brand-h) - 4*var(--gap));border-top:1px solid var(--line)}
+  .layers.open .layers-body{display:block}
+  .disclaimer{left:var(--gap);right:var(--gap);top:calc(var(--gap) + var(--brand-h) + 8px);bottom:auto}
+  .disclaimer span{font-size:11.5px;padding:6px 11px}
+  .banner{top:calc(var(--gap) + var(--brand-h) + 52px);left:var(--gap);right:var(--gap);transform:none;margin:0;max-width:none}
+  .leaflet-bottom{bottom:var(--sheet-h)}
+  .leaflet-control-zoom{display:none}
+}
+</style>
+</head>
+<body>
+<div id="map" role="application" aria-label="Map of processed lakes"></div>
+
+<header class="brand">
+  <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M4 16c3-6 7-9 11-9 4 0 7 3 7 7 0 5-5 8-10 8-5 0-8-2-8-6z" fill="none" stroke="#ff5b80" stroke-width="2.4"/><path d="M8 16.5c2.5-3 5-4.5 7.5-4.5" fill="none" stroke="#6fc3cd" stroke-width="2" stroke-linecap="round"/></svg>
+  <div><div class="word">lakeaudit</div><div class="meta" id="brandMeta">loading lakes…</div></div>
+</header>
+
+<aside class="panel" id="panel" aria-label="Lake panel">
+  <div class="grip" aria-hidden="true"></div>
+
+  <section id="vHome">
+    <h1 class="h1">Where does the lake's observed edge run?</h1>
+    <p class="lede">Checks a spot against the <strong>maximum post-monsoon water extent observed by Sentinel-2 since 2019</strong> — one witness to the FTL — and refuses to answer when your position is too uncertain to say which side you are on.</p>
+    <button type="button" class="btn btn-primary btn-xl" id="btnLocate">Use my location</button>
+    <details class="manual" id="manual">
+      <summary>Enter or place a point instead</summary>
+      <div class="body">
+        <div class="grid2">
+          <label class="field" for="inLat">Latitude<input id="inLat" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="17.430068"></label>
+          <label class="field" for="inLon">Longitude<input id="inLon" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="78.486859"></label>
+        </div>
+        <label class="field" for="inAcc">Position accuracy, metres <span class="hint">(95% radius)</span><input id="inAcc" inputmode="decimal" autocomplete="off" value="10"></label>
+        <div class="row">
+          <button type="button" class="btn" id="btnPlace" aria-pressed="false">Click on the map</button>
+          <button type="button" class="btn btn-ink" id="btnCheck">Check this point</button>
+        </div>
+        <p class="formerr" id="formErr" role="alert" hidden></p>
+      </div>
+    </details>
+    <div class="tiles tiles3" aria-label="Context">
+      <div class="tile"><b>~1 in 5</b><span>lakes have an official boundary</span></div>
+      <div class="tile accent"><b>0</b><span>tools publish an error rate</span></div>
+      <div class="tile"><b id="tileN">–</b><span>lakes processed</span></div>
+    </div>
+    <h2 class="h2">Processed lakes</h2>
+    <p class="status" id="homeStatus" role="status">Loading processed lakes…</p>
+    <ul class="list" id="lakeList"></ul>
+    <p class="small muted">Only lakes a pipeline run has produced appear here. Nothing is drawn that a run did not measure.</p>
+  </section>
+
+  <section id="vResult" hidden>
+    <button type="button" class="btn-back" data-back><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="2"/></svg>All lakes</button>
+    <p class="status" id="resStatus" role="status" aria-live="polite"></p>
+    <div id="resBody"></div>
+  </section>
+
+  <section id="vLake" hidden>
+    <button type="button" class="btn-back" data-back><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" fill="none" stroke="currentColor" stroke-width="2"/></svg>All lakes</button>
+    <div id="lakeBody"></div>
+  </section>
+</aside>
+
+<div class="layers" id="layers">
+  <button type="button" class="layers-toggle" id="layersToggle" aria-expanded="false" aria-controls="layersBody">
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M9 2 1.5 6 9 10l7.5-4zM1.5 9.5 9 13.5l7.5-4M1.5 12.5 9 16.5l7.5-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>Layers
+  </button>
+  <div class="layers-body" id="layersBody">
+    <fieldset>
+      <legend>Basemap</legend>
+      <label class="opt"><input type="radio" name="base" value="streets" checked>Streets<span class="src">OpenStreetMap</span></label>
+      <label class="opt"><input type="radio" name="base" value="satellite">Satellite<span class="src">Esri World Imagery</span></label>
+    </fieldset>
+    <fieldset>
+      <legend>Layers</legend>
+      <label class="opt"><input type="checkbox" id="lyExtent" checked><span class="sw sw-extent"></span>Observed extent</label>
+      <label class="opt"><input type="checkbox" id="lyBuffer" checked><span class="sw sw-buffer"></span>Buffer ring</label>
+      <label class="opt disabled" title="No notified FTL polygon has been extracted yet; nothing is drawn."><input type="checkbox" id="lyFtl" disabled><span class="sw sw-ftl"></span><span class="lbl">Notified FTL (HMDA)<span class="badge">no dataset yet</span></span></label>
+      <label class="opt"><input type="checkbox" id="lySeed"><span class="sw sw-seed"></span>OSM seed outline</label>
+      <label class="opt"><input type="checkbox" id="lyWater" checked><span class="sw sw-water"></span>Water by year</label>
+      <div class="yearrow">
+        <label for="yr">Year <output id="yrOut" for="yr">–</output></label>
+        <input type="range" id="yr" min="2019" max="2025" step="1" value="2025">
+        <p class="yearnote" id="yrNote"></p>
+      </div>
+      <label class="opt"><input type="checkbox" id="lyStruct" checked><span class="sw sw-struct"></span>Structures</label>
+      <label class="opt"><input type="checkbox" id="lyMe" checked><span class="sw sw-me"></span>My location</label>
+    </fieldset>
+  </div>
+</div>
+
+<div class="banner" id="synBanner" hidden>Synthetic sample data — not a result · basemap hidden</div>
+<div class="banner info" id="toast" role="status" hidden>Click the map to place a point</div>
+<div class="disclaimer" role="note"><span>Indicative only — the red line is one witness to the FTL, not the notified FTL, not a legal determination</span></div>
+
+<script src="/static/leaflet/leaflet.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const num = (n, d = 0) => Number(n).toLocaleString('en-IN', {minimumFractionDigits: d, maximumFractionDigits: d});
+const dist = m => m < 1000 ? `${num(m)} m` : `${num(m / 1000, m < 10000 ? 2 : 1)} km`;
+const acres = a => a == null ? '–' : `${num(a, a < 100 ? 1 : 0)} ac`;
+const span = ys => ys && ys.length ? (ys.length > 1 ? `${Math.min(...ys)}–${Math.max(...ys)}` : `${ys[0]}`) : '–';
+const cap = s => s ? s[0].toUpperCase() + s.slice(1) : '';
+
+const ZONE = {
+  inside_extent: {title: 'Inside the observed extent', short: 'Inside extent', chip: 'red', hex: '#a8123a'},
+  in_buffer: {title: 'In the buffer ring', short: 'In buffer', chip: 'ochre', hex: '#956426'},
+  outside: {title: 'Outside the extent and buffer', short: 'Outside', chip: 'teal', hex: '#2f6b4f'},
+};
+const STRUCT_HEX = {inside_extent: '#a8123a', in_buffer: '#956426', outside: '#667679'};
+
+const S = {lakes: [], byId: {}, detail: {}, lay: {}, user: null, nearby: null, lookup: null, target: null,
+           selected: null, year: null, base: 'streets', placing: false, synth: null};
+
+async function api(path) {
+  const r = await fetch(path, {headers: {Accept: 'application/json'}});
+  if (!r.ok) throw new Error(`${path} → HTTP ${r.status}`);
+  return r.json();
+}
+
+/* ------------------------------------------------------------ map */
+const mq = matchMedia('(max-width: 760px)');
+const phone = () => mq.matches;
+const panel = $('#panel');
+const sheetH = () => phone() ? panel.offsetHeight : 0;
+const padTL = () => phone() ? [16, 118] : [430, 24];
+const padBR = () => phone() ? [100, sheetH() + 16] : [290, 70];
+const fly = (b, maxZoom = 17) => b && b.isValid() && map.flyToBounds(b, {paddingTopLeft: padTL(), paddingBottomRight: padBR(), maxZoom, duration: .8});
+
+const map = L.map('map', {zoomControl: false, minZoom: 4, zoomSnap: .25});
+map.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>');
+map.setView([17.44, 78.45], 11);
+const zoomCtl = L.control.zoom({position: 'bottomright'});
+const syncZoom = () => phone() ? zoomCtl.remove() : zoomCtl.addTo(map);
+syncZoom();
+
+[['ringPane', 405], ['waterPane', 415], ['extentPane', 425], ['seedPane', 430], ['structPane', 440], ['lakePane', 620], ['userPane', 630]]
+  .forEach(([n, z]) => { map.createPane(n).style.zIndex = z; });
+const structRenderer = L.canvas({pane: 'structPane', padding: .4, tolerance: 4});
+
+const BASE = {
+  streets: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}),
+  satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom: 19, maxNativeZoom: 18,
+    attribution: 'Imagery &copy; <a href="https://www.esri.com">Esri</a> — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'}),
+};
+function applyBase() {
+  Object.values(BASE).forEach(l => map.removeLayer(l));
+  if (!S.synth) BASE[S.base].addTo(map);          // never a real basemap under synthetic shapes
+}
+applyBase();
+
+const G = {extent: L.layerGroup(), buffer: L.layerGroup(), seed: L.layerGroup(), water: L.layerGroup(),
+           structures: L.layerGroup(), me: L.layerGroup(), markers: L.layerGroup().addTo(map)};
+const TOGGLES = {extent: '#lyExtent', buffer: '#lyBuffer', seed: '#lySeed', water: '#lyWater', structures: '#lyStruct', me: '#lyMe'};
+for (const [k, sel] of Object.entries(TOGGLES)) {
+  const box = $(sel);
+  if (box.checked) G[k].addTo(map);
+  box.addEventListener('change', () => box.checked ? G[k].addTo(map) : map.removeLayer(G[k]));
+}
+const ensureOn = k => { const box = $(TOGGLES[k]); if (!box.checked) { box.checked = true; G[k].addTo(map); } };
+
+function refreshLayers() {
+  ['extent', 'buffer', 'seed', 'water', 'structures'].forEach(k => G[k].clearLayers());
+  for (const c of S.lakes) {
+    const l = S.lay[c.lake_id];
+    if (!l) continue;
+    if (c.synthetic && S.synth !== c.lake_id) continue;   // synthetic shapes only in their own, basemap-less view
+    G.extent.addLayer(l.extent); G.buffer.addLayer(l.buffer); G.seed.addLayer(l.seed); G.structures.addLayer(l.structures);
+    if (l.water[S.year]) G.water.addLayer(l.water[S.year]);
+  }
+  const withWater = S.lakes.filter(c => !c.synthetic && S.lay[c.lake_id] && S.lay[c.lake_id].water[S.year]).length;
+  const real = S.lakes.filter(c => !c.synthetic).length;
+  $('#yrNote').textContent = S.year ? `${withWater} of ${real} real lakes have open water mapped in ${S.year}` : '';
+}
+
+function structPopup(e, f, c) {
+  const p = f.properties, z = ZONE[p.zone] || {title: p.zone};
+  const html = `<div class="pz" style="color:${STRUCT_HEX[p.zone] || '#0e1b1d'}">${esc(z.title)}</div>
+    <div class="pk">${esc(p.structure_id)} · ${esc(p.footprint_source || 'unknown')} footprint</div>
+    <dl class="pdl"><dt>distance</dt><dd>${esc(dist(p.dist_to_extent_m))} to the line</dd>
+      <dt>run_id</dt><dd>${esc(p.run_id)}</dd><dt>commit</dt><dd>${esc(p.code_commit)}</dd><dt>params</dt><dd>${esc(p.params_hash)}</dd></dl>
+    <p class="pnote">Measured against ${esc(c.name)}'s maximum observed water extent (${c.synthetic ? 'SYNTHETIC sample — not a result' : 'Sentinel-2 L2A, ' + esc(span(c.provenance.years_used))}) — one witness to the FTL, not the notified FTL. Geometry only; not a finding about the building.</p>`;
+  L.popup({maxWidth: 300, autoPanPaddingTopLeft: padTL(), autoPanPaddingBottomRight: padBR()}).setLatLng(e.latlng).setContent(html).openOn(map);
+}
+
+function buildLake(d) {
+  const c = d.card, id = c.lake_id;
+  const fc = pred => ({type: 'FeatureCollection', features: d.boundary.features.filter(f => pred(f.properties.layer))});
+  const l = S.lay[id] = {water: {}};
+  l.extentFC = fc(k => k === 'max_observed_extent');
+  l.ringFC = fc(k => k === 'buffer_ring');
+  l.extent = L.geoJSON(l.extentFC, {pane: 'extentPane', interactive: false,
+    style: {color: '#a8123a', weight: 2.6, fillColor: '#a8123a', fillOpacity: .06}});
+  l.buffer = L.geoJSON(l.ringFC, {pane: 'ringPane', interactive: false,
+    style: {color: '#956426', weight: 1.2, dashArray: '5 4', fillColor: '#956426', fillOpacity: .24}});
+  l.seed = L.geoJSON(fc(k => k === 'seed_polygon'), {pane: 'seedPane', interactive: false,
+    style: {color: '#667679', weight: 1.5, dashArray: '3 4', fill: false}});
+  for (const f of d.water_by_year.features) {
+    l.water[f.properties.year] = L.geoJSON(f, {pane: 'waterPane', interactive: false,
+      style: {color: '#0a6f7d', weight: 1, fillColor: '#0a6f7d', fillOpacity: .4}});
+  }
+  l.structures = L.geoJSON(d.structures, {renderer: structRenderer, pane: 'structPane', bubblingMouseEvents: false,
+    style: f => ({color: STRUCT_HEX[f.properties.zone] || '#667679', weight: .8, fillColor: STRUCT_HEX[f.properties.zone] || '#667679', fillOpacity: .78}),
+    onEachFeature: (f, layer) => layer.on('click', e => { if (S.placing) return placeAt(e.latlng); structPopup(e, f, c); })});
+  l.bounds = l.extent.getBounds();
+  l.ringBounds = l.buffer.getBounds().isValid() ? l.buffer.getBounds() : l.bounds;
+}
+
+function addMarker(c) {
+  const m = L.circleMarker([c.centroid.lat, c.centroid.lon], {pane: 'lakePane', radius: 7, weight: 2.5,
+    color: c.synthetic ? '#667679' : '#a8123a', dashArray: c.synthetic ? '3 3' : null, fillColor: '#f9fbfa', fillOpacity: 1, bubblingMouseEvents: false})
+    .bindTooltip(c.synthetic ? `${esc(c.name)} · SYNTHETIC` : esc(c.name),
+      {permanent: true, direction: 'right', offset: [9, 0], className: 'lake-tip' + (c.synthetic ? ' syn' : '')})
+    .on('click', e => S.placing ? placeAt(e.latlng) : selectLake(c.lake_id));
+  G.markers.addLayer(m);
+}
+
+/* point-in-polygon for lake clicks: vector panes are non-interactive so the structures canvas gets its clicks */
+function pip(x, y, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function inFC(fc, x, y) {
+  return fc.features.some(f => {
+    const g = f.geometry, polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+    return polys.some(p => pip(x, y, p[0]) && !p.slice(1).some(h => pip(x, y, h)));
+  });
+}
+function lakeAt(ll) {
+  for (const c of S.lakes) {
+    const l = S.lay[c.lake_id];
+    if (!l || (c.synthetic && S.synth !== c.lake_id) || !l.ringBounds.contains(ll)) continue;
+    if (inFC(l.extentFC, ll.lng, ll.lat) || inFC(l.ringFC, ll.lng, ll.lat)) return c.lake_id;
+  }
+  return null;
+}
+map.on('click', e => {
+  if (S.placing) return placeAt(e.latlng);
+  const id = lakeAt(e.latlng);
+  if (id) selectLake(id);
+});
+map.on('zoomend', () => $('#map').classList.toggle('z-hi', map.getZoom() >= 15));
+
+function fitAll() {
+  const b = L.latLngBounds([]);
+  S.lakes.forEach(c => { const [w, s, e, n] = c.bbox; b.extend([[s, w], [n, e]]); });
+  const [bx, by] = padBR();   // lake-name labels hang to the right of their markers
+  if (b.isValid()) map.fitBounds(b, {paddingTopLeft: padTL(), paddingBottomRight: [phone() ? 190 : bx + 130, by], maxZoom: 15});
+}
+
+/* ------------------------------------------------------------ views */
+function show(view) {
+  ['vHome', 'vResult', 'vLake'].forEach(v => { $('#' + v).hidden = v !== view; });
+  panel.scrollTop = 0;
+}
+function goHome() {
+  S.selected = null;
+  setSynth(null);
+  show('vHome');
+}
+document.querySelectorAll('[data-back]').forEach(b => b.addEventListener('click', goHome));
+
+function setSynth(id) {
+  if (S.synth === id) return;
+  S.synth = id;
+  $('#synBanner').hidden = !id;
+  applyBase();
+  refreshLayers();
+}
+
+function chipsFor(c) {
+  const out = [`<span class="chip">Notification: ${esc(c.notification_status || 'unknown')}</span>`];
+  if (c.dispute) out.push('<span class="chip red">In litigation</span>');
+  if (c.area_class) out.push(`<span class="chip">${esc(cap(c.area_class))} lake · ${esc(c.buffer_width_m)} m buffer</span>`);
+  if (c.synthetic) out.push('<span class="chip syn">Synthetic</span>');
+  if (!c.seed_verified) out.push('<span class="chip ochre">Seed unverified</span>');
+  return `<div class="chips">${out.join('')}</div>`;
+}
+
+function renderHome() {
+  const n = S.lakes.length, syn = S.lakes.filter(c => c.synthetic).length, real = n - syn;
+  $('#tileN').textContent = n;
+  $('#brandMeta').innerHTML = `${n} lake${n === 1 ? '' : 's'} · ${real ? 'Sentinel-2' : ''}${real && syn ? ' + ' : ''}${syn ? '<span class="syn">SYNTHETIC</span>' : ''}`;
+  $('#homeStatus').hidden = n > 0;
+  if (!n) $('#homeStatus').textContent = 'No lakes processed yet. Run python -m lakeaudit run --lake <id> first.';
+  $('#lakeList').innerHTML = S.lakes.map(c => `<li><button type="button" class="item" data-lake="${esc(c.lake_id)}">
+      <span class="dot${c.synthetic ? ' syn' : ''}" aria-hidden="true"></span>
+      <span><span class="nm">${esc(c.name)}</span><span class="sub">${esc(c.district || '')}${c.synthetic ? ' · SYNTHETIC' : ''}${c.dispute ? ' · in litigation' : ''}</span></span>
+      <span class="val">${esc(acres(c.extent_acres))}<small class="muted">observed</small></span></button></li>`).join('');
+}
+$('#lakeList').addEventListener('click', e => { const b = e.target.closest('[data-lake]'); if (b) selectLake(b.dataset.lake); });
+
+function barsHTML(c) {
+  const rows = c.area_by_year || [];
+  const obs = rows.filter(r => r.status === 'observed');
+  const max = Math.max(...obs.map(r => r.acres), 1);
+  const label = rows.map(r => `${r.year}: ${r.status === 'observed' ? acres(r.acres) : r.status === 'insufficient' ? 'no usable scene' : 'no open water detected'}`).join('; ');
+  const bars = rows.map(r => {
+    if (r.status === 'observed') return `<div class="bar"><span class="v">${esc(num(r.acres, r.acres < 100 ? 1 : 0))}</span><div class="col" style="height:${Math.max(2, 100 * r.acres / max).toFixed(1)}%"></div></div>`;
+    if (r.status === 'insufficient') return `<div class="bar gap"><span class="v">no scene</span><div class="col" style="height:100%"></div></div>`;
+    return `<div class="bar nowater"><span class="v">no water</span><div class="col"></div></div>`;
+  }).join('');
+  return `<div class="bars" role="img" aria-label="Water area by year. ${esc(label)}">${bars}</div>
+    <div class="axis" aria-hidden="true">${rows.map(r => `<span>${r.year}</span>`).join('')}</div>
+    <div class="legend-s"><span><i style="background:var(--teal)"></i>acres observed</span><span><i style="border:1.5px dashed var(--faint)"></i>no usable scene</span><span><i style="border-top:2.5px dotted var(--ochre)"></i>clear scene, no open water</span></div>`;
+}
+
+function provHTML(p, extra = '') {
+  return `<div class="prov"><div class="kicker" style="margin:0">Provenance</div><dl>
+    <dt>run_id</dt><dd>${esc(p.run_id)}</dd><dt>commit</dt><dd>${esc(p.code_commit)}</dd><dt>params</dt><dd>${esc(p.params_hash)}</dd>
+    ${p.data_source ? `<dt>source</dt><dd>${p.data_source === 'sample' ? 'SYNTHETIC sample' : 'Sentinel-2 L2A (' + esc(p.data_source) + ')'}</dd>` : ''}
+    ${(p.years_with_data || p.years_used) ? `<dt>years</dt><dd>${esc((p.years_with_data || p.years_used).join(', '))}</dd>` : ''}
+    </dl>${p.scene_ids && p.scene_ids.length ? `<details><summary>${p.scene_ids.length} scene ids</summary>${p.scene_ids.map(esc).join('<br>')}</details>` : ''}${extra}</div>`;
+}
+
+function selectLake(id) {
+  const c = S.byId[id];
+  if (!c) return;
+  S.selected = id;
+  setSynth(c.synthetic ? id : null);
+  const obs = c.area_by_year.filter(r => r.status === 'observed');
+  const change = obs.length > 1 ? (obs[obs.length - 1].acres - obs[0].acres) / obs[0].acres * 100 : null;
+  const st = c.structures;
+  const near = S.nearby && S.nearby.lakes.find(r => r.lake_id === id);
+  const years = c.provenance.years_used;
+  $('#lakeBody').innerHTML = `
+    <h2 class="h1" style="margin-bottom:2px">${esc(c.name)}</h2>
+    <div class="muted small">${esc(c.district || '')}${c.district ? ' · ' : ''}${esc(c.lake_id)}</div>
+    ${chipsFor(c)}
+    ${near ? `<div class="card note"><div class="kicker">From your ${S.user.source === 'gps' ? 'location' : 'point'}</div>
+        <b>${esc(dist(near.distance_to_extent_line_m))}</b> to this lake's observed edge · <span style="color:${ZONE[near.point_zone].hex};font-weight:600">${esc(ZONE[near.point_zone].short)}</span>
+        <div class="small muted">Position known to ±${esc(num(S.user.acc))} m. "Analyze here" gives the checked answer.</div></div>` : ''}
+    <div class="tiles tiles3">
+      <div class="tile"><b>${esc(acres(c.extent_acres))}</b><span>max observed extent${c.synthetic ? ' (synthetic)' : ''}</span></div>
+      <div class="tile"><b>${change == null ? '–' : (change >= 0 ? '+' : '') + num(change, 1) + '%'}</b><span>${obs.length > 1 ? `water area ${obs[0].year}→${obs[obs.length - 1].year}` : 'needs two observed years'}</span></div>
+      <div class="tile${st && st.inside_extent ? ' accent' : ''}"><b>${st ? `${num(st.inside_extent || 0)} / ${num(st.in_buffer || 0)}` : '–'}</b><span>${st ? 'structures inside / in buffer' : 'structures not fetched this run'}</span></div>
+    </div>
+    <h3 class="h2">Water area by year</h3>
+    ${barsHTML(c)}
+    <h3 class="h2">Witnesses to the boundary</h3>
+    <ul class="wit">
+      <li><span class="mk ok" aria-label="available">&#10003;</span><div><b>${c.synthetic ? 'Synthetic sample extent' : 'Satellite extent'}</b><span>${c.synthetic ? 'SYNTHETIC sample data — demonstrates the mechanism, not a result.' : `Maximum post-monsoon water extent observed by Sentinel-2, ${esc(span(years))} · ${c.provenance.scene_ids.length} scenes. The red line.`}</span></div></li>
+      <li><span class="mk no" aria-label="not available">&ndash;</span><div><b>Official notified FTL (HMDA)</b><span>${c.official_ftl.available ? 'Available.' : 'Not available: ' + esc(c.official_ftl.reason) + '.'}</span></div></li>
+      <li><span class="mk q" aria-label="unknown">?</span><div><b>1971–72 Survey of India sheet</b><span>Not georeferenced.</span></div></li>
+    </ul>
+    ${c.notes ? `<h3 class="h2">Notes</h3><p class="small" style="margin:0">${esc(c.notes)}</p>` : ''}
+    <div class="row" style="margin-top:18px">
+      <button type="button" class="btn" data-act="extent">View extent</button>
+      <button type="button" class="btn" data-act="buffer">View buffer</button>
+    </div>
+    <button type="button" class="btn btn-primary btn-wide" data-act="analyze">Analyze here</button>
+    <p class="small muted" style="margin:6px 0 0">Checks ${S.user ? 'your ' + (S.user.source === 'gps' ? 'location' : 'point') : 'your location'} against this lake only.</p>
+    ${provHTML({...c.provenance, data_source: c.data_source}, `<p>${esc(c.boundary_is)}.</p>`)}`;
+  show('vLake');
+  if (S.lay[id]) fly(S.lay[id].bounds);
+}
+$('#lakeBody').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const id = S.selected, l = S.lay[id];
+  if (b.dataset.act === 'extent' && l) { ensureOn('extent'); fly(l.bounds); }
+  if (b.dataset.act === 'buffer' && l) { ensureOn('buffer'); fly(l.ringBounds, 18); }
+  if (b.dataset.act === 'analyze') S.user ? analyze(S.user.lat, S.user.lon, S.user.acc, S.user.source, id) : locate(id);
+});
+
+/* ------------------------------------------------------------ locate + analyze */
+function drawUser() {
+  G.me.clearLayers();
+  if (!S.user) return;
+  const {lat, lon, acc} = S.user;
+  L.circle([lat, lon], {pane: 'userPane', radius: acc, color: '#0e1b1d', weight: 1.5, fillColor: '#0e1b1d', fillOpacity: .1, interactive: false}).addTo(G.me);
+  L.circleMarker([lat, lon], {pane: 'userPane', radius: 6.5, color: '#fff', weight: 2.5, fillColor: '#0e1b1d', fillOpacity: 1, interactive: false})
+    .bindTooltip(`${S.user.source === 'gps' ? 'You' : 'Point'} · ±${num(acc)} m`, {permanent: true, direction: 'top', offset: [0, -8], className: 'me-tip'})
+    .addTo(G.me);
+}
+
+function resStatus(msg, err = false) { const s = $('#resStatus'); s.textContent = msg; s.hidden = !msg; s.classList.toggle('err', err); }
+
+function locate(target = null) {
+  S.target = target;
+  setPlacing(false);
+  show('vResult');
+  $('#resBody').innerHTML = '';
+  if (!('geolocation' in navigator)) return geoFail('This browser has no location service.', target);
+  resStatus('Finding your position…');
+  navigator.geolocation.getCurrentPosition(
+    p => analyze(p.coords.latitude, p.coords.longitude, Math.max(1, Math.round(p.coords.accuracy)), 'gps', target),
+    e => geoFail({1: 'Location permission was denied.', 2: 'Your position is unavailable right now.', 3: 'Finding your position timed out.'}[e.code] || e.message, target),
+    {enableHighAccuracy: true, timeout: 20000, maximumAge: 0});
+}
+function geoFail(msg, target) {
+  resStatus('');
+  $('#resBody').innerHTML = `<div class="card refusal"><h3>No position, so no answer</h3><p>${esc(msg)}</p>${refusalButtons()}</div>`;
+}
+const refusalButtons = () => `<div class="row"><button type="button" class="btn btn-ink" data-res="retry">Retry in open sky</button><button type="button" class="btn" data-res="place">Place a point instead</button></div>`;
+$('#resBody').addEventListener('click', e => {
+  const b = e.target.closest('[data-res],[data-lake]'); if (!b) return;
+  if (b.dataset.lake) return selectLake(b.dataset.lake);
+  if (b.dataset.res === 'retry') locate(S.target);
+  if (b.dataset.res === 'place') { goHome(); $('#manual').open = true; setPlacing(true); $('#manual').scrollIntoView({block: 'nearest'}); }
+});
+
+async function analyze(lat, lon, acc, source, target = null) {
+  S.user = {lat, lon, acc, source};
+  S.target = target;
+  drawUser();
+  ensureOn('me');
+  show('vResult');
+  $('#resBody').innerHTML = '';
+  resStatus('Measuring distances to every processed lake…');
+  try {
+    const q = `lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`;
+    const [nb, lk] = await Promise.all([
+      api(`/nearby?${q}`),
+      api(`/lookup?${q}&accuracy_m=${encodeURIComponent(acc)}${target ? '&lake_id=' + encodeURIComponent(target) : ''}`)]);
+    S.nearby = nb; S.lookup = lk;
+    resStatus('');
+    renderResult();
+  } catch (err) {
+    resStatus(`Could not reach the lookup service: ${err.message}`, true);
+  }
+}
+
+function renderResult() {
+  const nb = S.nearby, lk = S.lookup, u = S.user;
+  if (!lk.lake_id) { $('#resBody').innerHTML = `<div class="card refusal"><h3>No answer</h3><p>${esc(lk.reason || 'No lakes processed yet.')}</p></div>`; return; }
+  const c = S.byId[lk.lake_id];
+  if (c.synthetic) setSynth(c.lake_id); else setSynth(null);
+  const acc = lk.reported_gps_accuracy_m, d = lk.distance_to_extent_line_m;
+  const hard = lk.abstain && acc <= d;
+  const top = Math.max(acc, d) * 1.25 || 1;
+  const why = !lk.abstain
+    ? `Your whole uncertainty circle (±${num(acc)} m) lies on one side of ${esc(c.name)}'s line, ${esc(dist(d))} away.`
+    : hard ? `±${num(acc)} m is beyond the ${esc(num(100))} m limit this tool accepts, wherever the line is.`
+           : `The line is ${esc(dist(d))} from you but your position is only known to ±${num(acc)} m — the line runs through your uncertainty circle.`;
+  const sure = `<div class="card dark sure">
+      <div class="kicker">How sure are we</div>
+      <dl><dt>Your position<small>${u.source === 'gps' ? '95% radius reported by the device' : 'accuracy you entered'}</small></dt><dd>±${esc(num(acc))} m</dd>
+          <dt>Distance to the line<small>edge of ${esc(c.name)}'s observed extent</small></dt><dd>${esc(dist(d))}</dd></dl>
+      <div class="scale" aria-hidden="true"><div class="band" style="width:${(100 * acc / top).toFixed(1)}%"></div><div class="you"></div><div class="ln" style="left:${(100 * d / top).toFixed(1)}%"></div></div>
+      <div class="scale-l" aria-hidden="true"><span>you</span><span>line at ${esc(dist(d))}</span></div>
+      <p class="answer ${lk.abstain ? 'no' : 'yes'}">${lk.abstain ? 'We cannot answer' : 'We can answer'}</p>
+      <p>${why}</p></div>`;
+  const z = ZONE[lk.verdict];
+  const main = lk.abstain
+    ? `<div class="card refusal" role="alert"><h3>We won't guess</h3><p>${esc(lk.reason)}</p>${refusalButtons()}</div>`
+    : `<div class="card verdict z-${esc(lk.verdict)}"><div class="kicker">Verdict · ${esc(c.name)}</div>
+        <h3>${esc(z.title)}</h3><p>${esc(lk.plain)}</p>
+        <dl class="kv"><dt>Distance to the line</dt><dd>${esc(dist(d))}</dd><dt>Buffer ring</dt><dd>${esc(lk.buffer_width_m)} m<small>${esc(c.area_class)} lake, by observed extent</small></dd></dl>
+        ${lk.synthetic ? '<div class="chips"><span class="chip syn">Synthetic — not a result</span></div>' : ''}</div>`;
+  const list = nb.lakes.map(r => `<li><button type="button" class="item" data-lake="${esc(r.lake_id)}">
+      <span class="dot${r.synthetic ? ' syn' : ''}" aria-hidden="true"></span>
+      <span><span class="nm">${esc(r.name)}</span><span class="sub">${r.synthetic ? 'SYNTHETIC · ' : ''}${esc(acres(r.extent_acres))} observed</span></span>
+      <span class="val">${esc(dist(r.distance_to_extent_line_m))}<small style="color:${ZONE[r.point_zone].hex}">${esc(ZONE[r.point_zone].short)}</small></span></button></li>`).join('');
+  $('#resBody').innerHTML = `
+    <h2 class="h1" style="margin-bottom:2px">${S.target ? `Checked against ${esc(c.name)}` : `${nb.lakes.length} lakes nearby`}</h2>
+    <div class="muted small">${u.source === 'gps' ? 'Your location' : 'Your point'} ${esc(u.lat.toFixed(5))}, ${esc(u.lon.toFixed(5))} · nearest observed edge: ${esc(nb.lakes[0].name)}, ${esc(dist(nb.lakes[0].distance_to_extent_line_m))}</div>
+    ${sure}${main}
+    ${provHTML({...lk.provenance}, `<p>Boundary: ${esc(lk.boundary_is)}.</p><p>${esc(lk.disclaimer)}</p>`)}
+    <h3 class="h2">All processed lakes, nearest edge first</h3>
+    <ul class="list">${list}</ul>`;
+  const b = L.latLngBounds([[u.lat, u.lon]]).extend(L.latLng(u.lat, u.lon).toBounds(acc * 2));
+  if (S.lay[c.lake_id]) b.extend(S.lay[c.lake_id].bounds);
+  fly(b, 17);
+}
+
+/* ------------------------------------------------------------ manual entry + placer */
+function setPlacing(on) {
+  S.placing = on;
+  $('#btnPlace').setAttribute('aria-pressed', String(on));
+  $('#map').classList.toggle('placing', on);
+  $('#toast').hidden = !on;
+}
+function placeAt(ll) {
+  $('#inLat').value = ll.lat.toFixed(6);
+  $('#inLon').value = ll.lng.toFixed(6);
+  setPlacing(false);
+  show('vHome');
+  $('#manual').open = true;
+  $('#btnCheck').focus({preventScroll: true});
+  $('#manual').scrollIntoView({block: 'nearest'});
+}
+$('#btnPlace').addEventListener('click', () => setPlacing(!S.placing));
+$('#btnLocate').addEventListener('click', () => locate(null));
+$('#btnCheck').addEventListener('click', () => {
+  const lat = parseFloat($('#inLat').value), lon = parseFloat($('#inLon').value), acc = parseFloat($('#inAcc').value);
+  const err = !(lat >= -90 && lat <= 90) ? 'Latitude must be a number between -90 and 90.'
+    : !(lon >= -180 && lon <= 180) ? 'Longitude must be a number between -180 and 180.'
+    : !(acc > 0 && acc <= 10000) ? 'Accuracy must be a positive number of metres.' : '';
+  $('#formErr').textContent = err; $('#formErr').hidden = !err;
+  if (!err) analyze(lat, lon, acc, 'manual', null);
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (S.placing) setPlacing(false);
+  if ($('#layers').classList.contains('open')) toggleLayers(false);
+});
+
+/* ------------------------------------------------------------ layer control */
+function toggleLayers(open) {
+  $('#layers').classList.toggle('open', open);
+  $('#layersToggle').setAttribute('aria-expanded', String(open));
+}
+$('#layersToggle').addEventListener('click', () => toggleLayers(!$('#layers').classList.contains('open')));
+document.querySelectorAll('input[name="base"]').forEach(r => r.addEventListener('change', () => { S.base = r.value; applyBase(); }));
+$('#yr').addEventListener('input', () => { S.year = +$('#yr').value; $('#yrOut').textContent = S.year; ensureOn('water'); refreshLayers(); });
+
+/* ------------------------------------------------------------ layout sync */
+const syncSheet = () => document.documentElement.style.setProperty('--sheet-h', sheetH() + 'px');
+new ResizeObserver(syncSheet).observe(panel);
+mq.addEventListener('change', () => { syncZoom(); syncSheet(); if (!phone()) toggleLayers(false); });
+
+/* ------------------------------------------------------------ boot */
+async function boot() {
+  try {
+    S.lakes = (await api('/lakes')).sort((a, b) => (a.synthetic - b.synthetic) || a.name.localeCompare(b.name));   // real lakes first
+  } catch (err) {
+    $('#homeStatus').textContent = `Could not load lakes: ${err.message}`;
+    $('#homeStatus').classList.add('err');
+    $('#brandMeta').textContent = 'lookup service unreachable';
+    return;
+  }
+  S.lakes.forEach(c => { S.byId[c.lake_id] = c; addMarker(c); });
+  const years = [...new Set(S.lakes.flatMap(c => c.area_by_year.map(r => r.year)))].sort();
+  if (years.length) {
+    const yr = $('#yr'); yr.min = years[0]; yr.max = years[years.length - 1]; yr.value = years[years.length - 1];
+    S.year = +yr.value; $('#yrOut').textContent = S.year;
+  }
+  renderHome();
+  syncSheet();
+  fitAll();
+  await Promise.all(S.lakes.map(c => api(`/lake/${encodeURIComponent(c.lake_id)}`)
+    .then(d => { S.detail[c.lake_id] = d; buildLake(d); refreshLayers(); })
+    .catch(err => { console.warn(`lake ${c.lake_id}: ${err.message}`); })));
+  document.body.dataset.ready = '1';
+}
+window.lakeaudit = {state: S, map};
+boot();
+})();
+</script>
+</body>
+</html>

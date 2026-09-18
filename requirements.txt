@@ -15,3 +15,4 @@ uvicorn>=0.29
 # optional: PostGIS ingestion
 # psycopg2-binary>=2.9
 pytest
+httpx
