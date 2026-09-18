@@ -38,9 +38,11 @@ What must work on the laptop tonight, in order:
 2. `python -m lakeaudit run --lake nalla_cheruvu_kukatpally` — HYDRAA's official figure for this lake
    is **27 acres total, 14 encroached**; our max-extent acreage is compared against that in the demo.
    Verified: max observed extent **13.3 ac** (2022 9.1 · 2024 10.0 · 2025 12.7; 2019–21, 2023 no open
-   water at MNDWI>0). ≈ the 13 ac HYDRAA says remain; S2-since-2019 cannot witness land built over
-   earlier — that is the case for Landsat 1984→. Area class from observed extent = small (9 m); on
-   HYDRAA's 27 ac (10.9 ha) it would be 30 m.
+   water at MNDWI>0). HYDRAA restored the lake to 27.14 ac (reopened 9 Mar 2026; water-spread target
+   22 ac); the latest post-monsoon scene (13 Dec 2025, between the spring-2025 dig-out and the reopening)
+   shows ~13 ac of water — a water witness does not see lake land that isn't water. Next look: the
+   Oct–Dec 2026 window. Area class from observed extent = small (9 m); on HYDRAA's 27 ac (10.9 ha) it
+   would be 30 m.
 3. `python -m lakeaudit run --lake durgam_cheruvu` — verified: 68–78 ac/yr (2023: 54), max extent **81 ac**,
    both basins (cable bridge at ~17.4315 splits them; needs the OSM seed, way 28131043, to keep both).
    Record has 65 / 83 / 160+ ac candidates; ours is one witness, it does not pick between them.
