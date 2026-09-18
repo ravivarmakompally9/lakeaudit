@@ -1,6 +1,8 @@
 """The error-rate machinery recovers known answers: a line shrunk by 20 m reads as a 20 m gap,
-a 30 m shift reads as a 30 m worst gap, a vertex table that fails a gate is never compared,
-and nothing synthetic or non-official counts toward the published error rate."""
+a 30 m shift reads as a 30 m worst gap, a detached piece with no water in it is listed rather
+than read as a 200 m gap, a vertex table that fails a gate is never compared, and nothing
+synthetic or non-official counts toward the published error rate."""
+import math
 import csv
 import json
 import shutil
@@ -9,8 +11,9 @@ from pathlib import Path
 import pytest
 from shapely.affinity import translate
 from shapely.geometry import Point, shape
+from shapely.ops import unary_union
 
-from lakeaudit.geo import to_utm, to_wgs, utm_crs_for
+from lakeaudit.geo import m2_to_acres, to_utm, to_wgs, utm_crs_for
 from lakeaudit.pipeline import run_lake
 from lakeaudit.validate import RefusedReference, compare, load_reference, summarize, validate_lake
 
@@ -43,6 +46,29 @@ def test_30m_shift_reads_as_30m_worst_gap():
     m, _ = compare(_circle(300, dx_m=30), _circle(300))
     assert m["gap_ref_to_ours_m"]["max"] == pytest.approx(30.0, abs=0.5)
     assert 0 < m["ref_line_outside_ours"] < 1 and m["iou"] < 0.95
+
+
+def test_detached_reference_piece_is_listed_not_blended_into_gaps():
+    # Gurram's shape: the reference has the lake plus a pond 240 m off its shore; we saw water only in the lake
+    m, arrays = compare(_circle(300), unary_union([_circle(300), _circle(60, dx_m=600)]))
+    g = m["gap_ref_to_ours_m"]
+    assert g["max"] < 0.5 and m["ref_line_within_m"]["9"] == 1.0          # the lake's edge agrees exactly
+    [u] = m["ref_parts_unmatched"]
+    assert u["distance_to_other_line_m"] == pytest.approx(240.0, abs=1.0)
+    assert u["acres"] == pytest.approx(m2_to_acres(math.pi * 60 ** 2), rel=0.01)
+    assert m["ref_unmatched_acres"] == u["acres"] and m["ref_parts"] == 2 and not m["no_part_overlaps"]
+    assert m["iou"] < 1.0 and m["area_error_pct"] < 0                   # the missed pond still costs IoU and area
+    assert m["ours_parts_unmatched"] == [] and len(arrays["ref_unmatched_wgs"]) == 1
+
+
+def test_our_extra_piece_is_listed_and_no_overlap_falls_back_and_flags():
+    m, _ = compare(unary_union([_circle(300), _circle(50, dx_m=-500)]), _circle(300))
+    assert len(m["ours_parts_unmatched"]) == 1 and m["gap_ours_to_ref_m"]["max"] < 0.5
+    assert m["ref_parts_unmatched"] == []
+    far, _ = compare(_circle(100, dx_m=2000), _circle(100))              # wrong lake: nothing overlaps
+    assert far["no_part_overlaps"] and far["iou"] == 0.0
+    assert far["gap_ref_to_ours_m"]["median"] > 1700                     # measured anyway, not hidden
+    assert len(far["ref_parts_unmatched"]) == 1
 
 
 def test_gate_failure_is_refused_never_compared():

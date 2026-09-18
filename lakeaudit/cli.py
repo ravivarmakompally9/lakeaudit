@@ -94,6 +94,14 @@ def cmd_validate(a):
     print(f"  IoU {m['iou']:.3f} · area {m['area_ours_acres']:.1f} ac vs {m['area_ref_acres']:.1f} ac ({m['area_error_pct']:+.1f} %)")
     print(f"  reference line -> our line: median {g['median']:.0f} m · p95 {g['p95']:.0f} m · max {g['max']:.0f} m"
           f" · {100 * m['ref_line_within_m']['30']:.0f} % within 30 m · {100 * m['ref_line_outside_ours']:.0f} % lies outside our extent")
+    if m["no_part_overlaps"]:
+        print("  NO piece of the reference overlaps our line — wrong lake, or no water seen; gaps cover everything")
+    for u in m["ref_parts_unmatched"] if not m["no_part_overlaps"] else []:
+        print(f"  reference piece NOT in our line: {u['acres']:.1f} ac at ({u['lat']}, {u['lon']}), "
+              f"{u['distance_to_other_line_m']:.0f} m from it — listed, not counted as an edge gap")
+    for u in m["ours_parts_unmatched"]:
+        print(f"  our piece NOT in the reference: {u['acres']:.1f} ac at ({u['lat']}, {u['lon']}), "
+              f"{u['distance_to_other_line_m']:.0f} m from it")
     print("  " + ("COUNTS toward the published error rate" if rec["counts_toward_published_error_rate"]
                   else f"does NOT count toward the published error rate: {rec['why_not_counted']}"))
     out = ROOT / "outputs" / a.lake
@@ -103,13 +111,15 @@ def cmd_validate(a):
 def cmd_validation_summary(a):
     from .validate import summarize
     s = summarize(ROOT)
-    print(f"{'lake':28s} {'reference':14s} {'IoU':>6s} {'area%':>7s} {'med m':>6s} {'p95 m':>6s} {'max m':>6s} {'<=30m':>6s}  counted")
+    print(f"{'lake':28s} {'reference':14s} {'IoU':>6s} {'area%':>7s} {'med m':>6s} {'p95 m':>6s} {'max m':>6s} {'<=30m':>6s} {'missed':>9s}  counted")
     for r in s["rows"]:
         flag = "yes" if r["counted"] else "no"
         flag += "  (STALE: lake re-run since)" if r["stale"] else ""
         flag += "  [SYNTHETIC]" if r["synthetic"] else ""
+        missed = f"{r['ref_unmatched_acres']:.1f} ac" if r["ref_unmatched_parts"] else "–"
         print(f"{r['lake_id']:28s} {r['kind']:14s} {r['iou']:6.3f} {r['area_error_pct']:+7.1f} {r['gap_median_m']:6.0f} "
-              f"{r['gap_p95_m']:6.0f} {r['gap_max_m']:6.0f} {100 * r['within_30m']:5.0f}%  {flag}")
+              f"{r['gap_p95_m']:6.0f} {r['gap_max_m']:6.0f} {100 * r['within_30m']:5.0f}% {missed:>9s}  {flag}")
+    print("(missed = reference pieces with no water in our line; not in the gap columns)")
     print("\nby reference kind (current runs only):")
     print(json.dumps(s["by_kind"], indent=2))
     print("\npublished error rate (gated notified FTL, real data only):")

@@ -77,7 +77,9 @@ python -m lakeaudit validation-summary                                          
 
 Measures our max observed extent against a reference polygon: IoU, area error, and the gap in metres from
 the reference line to ours (median, p95, max, share within 9 / 20 / 30 / 60 m). Writes
-`outputs/<lake>/validation_<kind>.json` and `.png`. The reference is read only after a run and is never an
+`outputs/<lake>/validation_<kind>.json` and `.png`. A reference piece that doesn't overlap our line at all is listed
+separately with its acres and distance (the `missed` column), not counted as an edge gap; IoU and area still
+include it. Example: OSM maps Gurram Cheruvu with a detached 4.6 ac pond where Sentinel-2 never saw open water. The reference is read only after a run and is never an
 input to the pipeline. A notified FTL is accepted only as a vertex table that passes the three gates; a table
 that fails is refused, never compared. **Only gated notified FTLs on real (non-synthetic) runs count toward
 the published error rate**, and today that count is zero. The OSM comparison is a check on the method, not
@@ -115,7 +117,7 @@ Screenshots for the deck (server running): `python scripts/screenshots.py` → `
 
 ```bash
 pip install playwright && python -m playwright install chromium    # once, for the browser tests
-python -m pytest -q tests               # 51: gates, water extraction, validation, API, and every button in the web app
+python -m pytest -q tests               # 53: gates, water extraction, validation, API, and every button in the web app
 ```
 
 `tests/test_ui.py` clicks every button and control in a real browser (desktop and phone sizes) against a throwaway

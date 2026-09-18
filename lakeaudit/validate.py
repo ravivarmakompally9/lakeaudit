@@ -19,7 +19,13 @@ geodesic, like everywhere else in the pipeline.
                           read as a 420 m gap) TO any edge of the other line, islands included: a
                           land tongue whose neck is under one pixel wide is a peninsula in OSM but an
                           island in our mask (Durgam Cheruvu's south basin) — we did see that land.
-  gap_ours_to_ref_m       the same, measured the other way
+                          Only pieces that overlap the other line are measured this way. A piece
+                          with no overlap at all (OSM's Gurram Cheruvu has a detached 4.6 ac pond
+                          where Sentinel-2 never saw open water) is not an edge error. It is listed
+                          under ref_parts_unmatched with its acres and distance instead of turning
+                          every point on it into a 200 m "gap". If no piece overlaps (wrong lake?),
+                          every piece is measured and no_part_overlaps is set.
+  gap_ours_to_ref_m       the same, measured the other way (our unmatched pieces: ours_parts_unmatched)
   hausdorff_m             the larger of the two maxima (sampled)
   ref_line_outside_ours   fraction of the reference line lying outside our extent — where the
                           reference reaches further than any water Sentinel-2 has seen
@@ -135,6 +141,20 @@ def _stats(d: np.ndarray) -> dict:
             "max": round(float(d.max()), 1), "n_samples": int(d.size)}
 
 
+def _overlapping(g_utm, other_utm) -> tuple[list, list]:
+    """Split a line's pieces into those that overlap the other line and those that do not."""
+    hit, miss = [], []
+    for q in _polys(g_utm):
+        (hit if q.intersection(other_utm).area > 1.0 else miss).append(q)   # > 1 m²: numerically nonzero
+    return hit, miss
+
+
+def _piece(q_utm, other_utm, utm) -> dict:
+    pt = to_wgs(q_utm.representative_point(), utm)
+    return {"acres": round(m2_to_acres(area_m2(to_wgs(q_utm, utm))), 2), "lat": round(pt.y, 6), "lon": round(pt.x, 6),
+            "distance_to_other_line_m": round(float(q_utm.distance(other_utm)), 1)}
+
+
 def compare(ours_wgs, ref_wgs, step_m: float = 5.0) -> tuple[dict, dict]:
     """Returns (metrics, arrays). `arrays` holds the reference-line samples and their gaps
     (UTM + WGS84) for plotting; it is not written to the record."""
@@ -144,7 +164,14 @@ def compare(ours_wgs, ref_wgs, step_m: float = 5.0) -> tuple[dict, dict]:
     shapely.prepare(o)
     inter, union = o.intersection(r).area, o.union(r).area
 
-    pr, po = _samples(r, step_m), _samples(o, step_m)
+    # Pair the pieces: a piece with no overlap with the other line is reported, not gap-measured.
+    r_hit, r_miss = _overlapping(r, o)
+    o_hit, o_miss = _overlapping(o, r)
+    no_overlap = not r_hit
+    r_meas = unary_union(r_hit) if r_hit else r       # nothing overlaps: measure everything, flag it
+    o_meas = unary_union(o_hit) if o_hit else o
+
+    pr, po = _samples(r_meas, step_m), _samples(o_meas, step_m)
     d_r = shapely.distance(pr, o.boundary)            # reference outer line -> any edge of ours
     d_o = shapely.distance(po, r.boundary)            # our outer line -> any edge of the reference
     outside = ~shapely.covers(o, pr)                  # reference reaches beyond our extent here
@@ -168,11 +195,21 @@ def compare(ours_wgs, ref_wgs, step_m: float = 5.0) -> tuple[dict, dict]:
         "worst_gap": {"lat": round(worst.y, 6), "lon": round(worst.x, 6), "gap_m": round(float(d_r[i]), 1),
                       "ref_outside_ours": bool(outside[i])},
         "step_m": step_m,
-        "gap_measured_on": "from each outer shoreline (islands dropped) to any edge of the other line",
+        "gap_measured_on": ("NO piece of the reference overlaps our line (wrong lake, or no water seen) — every piece measured"
+                            if no_overlap else
+                            "from the outer shoreline (islands dropped) of each piece that overlaps the other line, "
+                            "to any edge of the other line; pieces with no overlap are listed separately"),
+        "no_part_overlaps": no_overlap,
+        "ref_parts": len(_polys(r)),
+        "ref_parts_unmatched": [_piece(q, o, utm) for q in r_miss],
+        "ref_unmatched_acres": round(sum(m2_to_acres(area_m2(to_wgs(q, utm))) for q in r_miss), 2),
+        "ours_parts": len(_polys(o)),
+        "ours_parts_unmatched": [_piece(q, r, utm) for q in o_miss],
         "inner_rings": {"ours": sum(len(p.interiors) for p in _polys(o)), "ref": sum(len(p.interiors) for p in _polys(r))},
     }
     xy = shapely.get_coordinates(to_wgs(shapely.multipoints(pr), utm))
-    return metrics, {"ref_lonlat": xy, "gap_m": d_r, "outside": outside}
+    return metrics, {"ref_lonlat": xy, "gap_m": d_r, "outside": outside,
+                     "ref_unmatched_wgs": [to_wgs(q, utm) for q in r_miss]}
 
 
 def _extent(out_dir: Path):
@@ -237,6 +274,8 @@ def render_validation(out_dir: Path, rec: dict, ours_wgs, ref_wgs, arrays: dict)
         ax.plot(*p.exterior.xy, color="#a8123a", lw=2.0, zorder=4)
     for p in _polys(ref_wgs):
         ax.plot(*p.exterior.xy, color="#6b7780", lw=0.8, zorder=3)
+    for q in arrays["ref_unmatched_wgs"]:
+        ax.fill(*q.exterior.xy, facecolor="none", edgecolor="#43565a", hatch="////", lw=0.9, zorder=3)
     xy, gap = arrays["ref_lonlat"], arrays["gap_m"]
     vmax = max(30.0, float(np.percentile(gap, 99)))
     sc = ax.scatter(xy[:, 0], xy[:, 1], c=gap, cmap="Purples", vmin=0, vmax=vmax, s=7, zorder=5, linewidths=0)
@@ -254,10 +293,21 @@ def render_validation(out_dir: Path, rec: dict, ours_wgs, ref_wgs, arrays: dict)
     line2 = (f"IoU {m['iou']:.2f} · area {m['area_ours_acres']:.1f} ac vs {m['area_ref_acres']:.1f} ac ({m['area_error_pct']:+.1f} %)\n"
              f"gap median {g['median']:.0f} m, p95 {g['p95']:.0f} m, max {g['max']:.0f} m · "
              f"{100 * m['ref_line_within_m']['30']:.0f} % of the reference line within 30 m")
+    miss = m["ref_parts_unmatched"]
+    if m["no_part_overlaps"]:
+        line2 += "\nNO piece of the reference overlaps our line — wrong lake, or no water seen. Gaps cover everything."
+    elif miss:
+        line2 = line2.replace("gap median", "gap (pieces that overlap) median")
+        line2 += (f"\nnot in our line: {len(miss)} reference piece{'s' if len(miss) > 1 else ''}, {m['ref_unmatched_acres']:.1f} ac, "
+                  f"{min(u['distance_to_other_line_m'] for u in miss):.0f} m away (hatched)")
     ax.set_title(f"{head}\n{line2}", fontsize=10, loc="left")
     handles = [Line2D([0], [0], color="#a8123a", lw=2.0, label="ours: max observed extent\n(one witness, not the FTL)"),
                Line2D([0], [0], color="#6b7780", lw=0.8, marker="o", markersize=4, markerfacecolor="#7a64a8",
                       markeredgewidth=0, label=f"reference: {kind}\n(dots coloured by gap)")]
+    if arrays["ref_unmatched_wgs"] and not m["no_part_overlaps"]:
+        from matplotlib.patches import Patch
+        handles.append(Patch(facecolor="none", edgecolor="#43565a", hatch="////",
+                             label="reference piece with no water\nin our line (not gap-measured)"))
     ax.legend(handles=handles, loc="upper left", bbox_to_anchor=(1.18, 1), borderaxespad=0, fontsize=8, frameon=True)
     counted = ("Counts toward the published error rate." if rec["counts_toward_published_error_rate"]
                else f"Does NOT count toward the published error rate: {rec['why_not_counted']}.")
@@ -276,6 +326,7 @@ def _row(rec: dict) -> dict:
     return {"lake_id": rec["lake_id"], "kind": rec["reference"]["kind"], "reference_date": rec["reference"].get("date"),
             "iou": m["iou"], "area_error_pct": m["area_error_pct"], "gap_median_m": g["median"], "gap_p95_m": g["p95"],
             "gap_max_m": g["max"], "within_30m": m["ref_line_within_m"]["30"],
+            "ref_unmatched_parts": len(m.get("ref_parts_unmatched", [])), "ref_unmatched_acres": m.get("ref_unmatched_acres", 0.0),
             "counted": rec["counts_toward_published_error_rate"], "why_not_counted": rec["why_not_counted"],
             "synthetic": rec["synthetic"], "run_id": rec["ours"]["run_id"], "validated_utc": rec["validated_utc"]}
 
