@@ -251,7 +251,7 @@ def render_validation(out_dir: Path, rec: dict, ours_wgs, ref_wgs, arrays: dict)
     ax.ticklabel_format(useOffset=False, style="plain")
     ax.set_xlabel("lon"); ax.set_ylabel("lat"); ax.grid(alpha=0.2)
     head = f"{rec['lake_name']} — our line vs {kind}" + ("   [SYNTHETIC — not a result]" if rec["synthetic"] else "")
-    line2 = (f"IoU {m['iou']:.2f} · area {m['area_ours_acres']:.1f} ac vs {m['area_ref_acres']:.1f} ac ({m['area_error_pct']:+.1f} %) · "
+    line2 = (f"IoU {m['iou']:.2f} · area {m['area_ours_acres']:.1f} ac vs {m['area_ref_acres']:.1f} ac ({m['area_error_pct']:+.1f} %)\n"
              f"gap median {g['median']:.0f} m, p95 {g['p95']:.0f} m, max {g['max']:.0f} m · "
              f"{100 * m['ref_line_within_m']['30']:.0f} % of the reference line within 30 m")
     ax.set_title(f"{head}\n{line2}", fontsize=10, loc="left")
