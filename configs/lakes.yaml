@@ -23,8 +23,8 @@ lakes:
   - id: nalla_cheruvu_kukatpally
     name: Nalla Cheruvu (Kukatpally)
     district: Medchal-Malkajgiri
-    seed_lat: 17.4935
-    seed_lon: 78.4005
+    seed_lat: 17.48836        # centroid of OSM way 129532522 "Nalla Cheruvu" (15.2 ac); old seed 17.4935,78.4005 was ~1.9 km west
+    seed_lon: 78.41837
     seed_verified: false
     osm_name_regex: "(?i)nalla.?cheruvu"
     search_radius_m: 2500
