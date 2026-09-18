@@ -92,7 +92,13 @@ def render_area_chart(out_dir: Path, title: str, source: str) -> Path:
     if rows:
         ys = [int(r["year"]) for r in rows]
         ac = [m2_to_acres(float(r["area_m2"])) for r in rows]
-        ax.plot(ys, ac, marker="o", color="#0a6f7d", lw=2)
+        # Break the line at clear no-water years: a segment drawn through one would imply water that wasn't seen.
+        dry = [int(r["year"]) for r in missing if r["threshold_method"] not in NO_SCENE_METHODS]
+        seg = [0]
+        for i in range(1, len(ys) + 1):
+            if i == len(ys) or any(ys[i - 1] < d < ys[i] for d in dry):
+                ax.plot(ys[seg[0]:i], ac[seg[0]:i], marker="o", color="#0a6f7d", lw=2)
+                seg = [i]
         for y, a, r in zip(ys, ac, rows):
             ax.annotate(f"{a:.1f} ac", (y, a), textcoords="offset points", xytext=(0, 7), ha="center", fontsize=8)
             if r["threshold_method"] != "otsu_roi":
