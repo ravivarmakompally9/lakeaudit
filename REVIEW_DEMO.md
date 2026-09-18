@@ -56,7 +56,17 @@
 
 **Live: Hussain Sagar (45 s).** `preview.png` then `map.html`. Toggle the water layers by year. *Sentinel-2, post-monsoon window, one scene per year, chosen by cloud cover over the lake — not over the whole tile. The index is MNDWI; the threshold is Otsu run inside the lake's own neighbourhood, because on a whole Hyderabad tile water is under 1% of pixels and Otsu's assumption breaks.*
 
-**Live: Nalla Cheruvu (1.5 min).** `area_by_year.png` — the lake's life story. Then the map: the red line is the max observed extent. Say the acreage, then say HYDRAA's 27/14. *That's our first validation point. It's one lake and it's not blind yet — but the pipeline gives a number that can be checked against an official one, and that is the whole project.*
+**Live: Nalla Cheruvu (2 min).** The honest-comparison lake. Only run this beat if tonight's lake-identity check passed.
+
+1. *Nothing on screen.* *HYDRAA went to this lake in September 2024 and said 27 acres total, 14 encroached — so about 13 left. Here is what one independent witness saw, using none of their data.* (27 − 14 is our arithmetic; HYDRAA did not publish a "remaining" figure.)
+2. `area_by_year.png`. *Seven post-monsoon years. Open water in three of them: 9.1 acres in 2022, 10.0 in 2024, 12.7 in 2025. In the other four the sky was clear but the lakebed reads as land — dry or weed-covered; this index cannot tell which. We record "no open water". We don't guess.* (If the chart still labels those years "insufficient data", correct it out loud: the scenes were clear. The y-axis starts at 9 acres, so the rise looks steeper than it is.)
+3. `preview.png`, then `map.html`. *The red line is the union of those three years: 13.3 acres. It is the maximum water extent Sentinel-2 has observed since 2019 — one witness to the FTL, not the FTL.*
+4. The comparison. *13.3 against about 13 — consistent. But our pixels are 20 metres. On this lake's 1.15 km shoreline, moving the edge by half a pixel moves the area anywhere from 10.6 to 16.2 acres. HYDRAA's 13 and OpenStreetMap's mapped 15.2 both sit inside that band. So this is a sanity check, not a validation. And the 27? Even a full pixel of error only reaches 19 acres. The 14 lost acres are not a resolution artefact. They are real — and this witness cannot see them.*
+5. The zero. *645 buildings around this lake. Zero inside our line, zero in the buffer. That is not "no encroachment". It is exactly what a witness that only sees water since 2019 should report: whatever stands on those 14 acres was there before our record starts. That is why the design is a set of witnesses, not one detector — the notified polygon from the PDFs, the 1971–72 Survey of India sheet, Landsat from 1984. Where they disagree is the signal.*
+6. The buffer. *Today the code sets the buffer from the observed extent: 5.4 hectares, "small", 9 metres. On HYDRAA's 27 acres it would be 30 metres. Set the buffer from what is left of a lake and encroachment shrinks its own protection — so the area class will come from the largest credible witness. And the whole 9-metre ring here is 2.6 acres: smaller than the roughly ±2.8 acres that half a pixel of edge moves this lake. At 20 m, this system cannot adjudicate a 9 m buffer on a lake this size. Saying that, with a measured number, is what this project is for.*
+7. *One lake, not blind yet, one witness. But it gave a number we could check against an official one — and it told us exactly what it cannot see.*
+
+Short on time: drop the first half of 6 (the area-class point); keep the 2.6 vs ±2.8 line. Where the numbers come from: MNDWI uses Sentinel-2's 20 m SWIR band; the edge figures are the `boundary.geojson` extent buffered ±10 m / ±20 m in UTM 44N (10.6–16.2 ac / 8.3–19.0 ac); the ring is the `buffer_ring` feature (2.58 ac).
 
 **Live: provenance (30 s).** Click any building on the map → popup shows zone, distance, run id, **commit hash**. Open `run.json`. *Every row can be regenerated. If someone challenges a line in month five, we rerun this exact commit with this exact params hash.*
 
@@ -71,6 +81,16 @@
 **"Why not Google Earth Engine?"** GEE is in the plan for the 1984→ Landsat record and is applied for. Sentinel-2 from 2019 is enough to build and test every stage, and it runs with no account from any laptop — which is why you can see it working today.
 
 **"Is the red line the FTL?"** No. It is the maximum water extent Sentinel-2 has observed since 2019 — one independent witness. The notified FTL is another. The 1971–72 survey sheet is a third. The paper measures the gap between them. Saying "this is the FTL" is exactly the mistake the project exists to stop.
+
+**"The government says half of Nalla Cheruvu is encroached and you found zero buildings?"** This witness sees water from 2019 on; the land was taken before that. Zero means "not visible to this witness", not "clean". That is exactly why no single witness gets to decide, and why the envelope needs the notified polygon, the 1971–72 sheet and Landsat 1984→.
+
+**"Was Nalla Cheruvu dry in 2019–2021?"** We don't know. The scenes were clear and the lakebed read as land (median MNDWI −0.24 to −0.36 inside the OSM outline). A floating weed mat also reads as land to this index. A field visit settles it; until then we record "no open water", not "dry".
+
+**"Isn't 13.3 vs 13 just luck?"** Partly. Half a pixel of edge on this lake is about ±2.8 acres, which is why we call it a sanity check. The accuracy number comes from blind validation against notified polygons, not from one lake. What is not luck: 27 acres is outside even a full pixel of error (19 ac max), so the loss is real.
+
+**"Why is 2025 bigger than 2022?"** Rainfall, weed clearance and restoration are all candidates, and imagery alone cannot separate them. We report the area; we don't claim a cause.
+
+**"Are you sure it's the same Nalla Cheruvu HYDRAA surveyed?"** Matched to OSM way 129532522 by name, then checked against _(fill in tonight: the source you used)_. If that check fails, say so — don't present the comparison.
 
 **"Where do the buildings come from?"** OpenStreetMap today, because it needs no setup. Google Open Buildings V3 is the production source and drops in as a config switch. OSM coverage is partial and Open Buildings' South Asia recall is about 77%, so counts are reported with that caveat — never as complete.
 
