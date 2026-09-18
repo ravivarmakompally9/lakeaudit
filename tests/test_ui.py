@@ -49,9 +49,14 @@ def _tree(tmp: Path, lakes: list[str], real: tuple[str, ...] = ()) -> Path:
     return tmp
 
 
-def _validate(root: Path, lid: str, grow_m: float) -> None:
-    """A reference `grow_m` outside the run's extent, measured with the real validate code."""
-    from shapely.geometry import mapping, shape
+def _validate(root: Path, lid: str, grow_m: float, pond: bool = False, kind: str = "osm_shoreline",
+              shift_m: float = 0.0) -> None:
+    """A reference `grow_m` outside the run's extent, measured with the real validate code.
+    `pond` adds a detached 40 m-radius piece 150 m off the east shore that our line never covers;
+    `shift_m` moves the whole reference east (3 km: a different lake, nothing overlaps)."""
+    from shapely.affinity import translate
+    from shapely.geometry import Point, mapping, shape
+    from shapely.ops import unary_union
     from lakeaudit.geo import to_utm, to_wgs, utm_crs_for
     from lakeaudit.validate import load_reference, validate_lake
     out = root / "outputs" / lid
@@ -59,18 +64,24 @@ def _validate(root: Path, lid: str, grow_m: float) -> None:
                if f["properties"]["layer"] == "max_observed_extent")
     utm = utm_crs_for(ext.centroid.x, ext.centroid.y)
     ref = out / "ref.geojson"
-    ref.write_text(json.dumps({"type": "Feature", "properties": {}, "geometry": mapping(to_wgs(to_utm(ext, utm).buffer(grow_m), utm))}))
-    validate_lake(root, lid, load_reference(ref, "osm_shoreline"))
+    ref_u = to_utm(ext, utm).buffer(grow_m)
+    if pond:
+        minx, miny, maxx, maxy = ref_u.bounds
+        ref_u = unary_union([ref_u, Point(maxx + 190, (miny + maxy) / 2).buffer(40)])
+    ref_u = translate(ref_u, xoff=shift_m)
+    ref.write_text(json.dumps({"type": "Feature", "properties": {}, "geometry": mapping(to_wgs(ref_u, utm))}))
+    validate_lake(root, lid, load_reference(ref, kind))
 
 
 @pytest.fixture(scope="module")
 def trees(tmp_path_factory):
     real = _tree(tmp_path_factory.mktemp("real"), ["alwal_cheruvu", "hussain_sagar", "nalla_cheruvu_kukatpally"],
                  real=("hussain_sagar", "nalla_cheruvu_kukatpally"))
-    _validate(real, "hussain_sagar", 12)
+    _validate(real, "hussain_sagar", 12, pond=True)
     _validate(real, "nalla_cheruvu_kukatpally", 12)          # then made stale: must not show
     p = real / "outputs" / "nalla_cheruvu_kukatpally" / "validation_osm_shoreline.json"
     rec = json.loads(p.read_text()); rec["ours"]["run_id"] = "run_earlier"; p.write_text(json.dumps(rec))
+    _validate(real, "nalla_cheruvu_kukatpally", 0, kind="field_gps", shift_m=3000)   # a walk around another lake
     return {"real": real, "synth": _tree(tmp_path_factory.mktemp("synth"), ["alwal_cheruvu"])}
 
 
@@ -227,9 +238,13 @@ def test_lake_shows_how_wrong_the_line_can_be(app, size):
     assert "Not yet measured" in vals.nth(0).inner_text()                         # the official witness comes first
     osm = vals.nth(1).inner_text()
     assert "not the ftl" in osm.lower() and "Overlap (IoU)" in osm and "12 m" in osm and "Not counted" in osm
+    assert "Missed: a separate piece of this outline (1.2 ac)" in osm and "Not included in the gaps above" in osm
     page.click("#vLake [data-back]")
-    page.locator("#lakeList .lake", has_text="Nalla Cheruvu").click()             # its only record is stale
-    assert page.locator("#lake .val").count() == 1 and page.get_attribute("#lake .val", "data-kind") == "notified_ftl"
+    page.locator("#lakeList .lake", has_text="Nalla Cheruvu").click()             # OSM record stale, GPS walk elsewhere
+    vals = page.locator("#lake .val")
+    assert [vals.nth(i).get_attribute("data-kind") for i in range(vals.count())] == ["notified_ftl", "field_gps"]
+    gps = vals.nth(1).inner_text()
+    assert "No part of this outline overlaps our line" in gps and "Missed" not in gps
 
 
 def test_lake_data_source_opens(app):

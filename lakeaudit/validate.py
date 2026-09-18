@@ -327,6 +327,7 @@ def _row(rec: dict) -> dict:
             "iou": m["iou"], "area_error_pct": m["area_error_pct"], "gap_median_m": g["median"], "gap_p95_m": g["p95"],
             "gap_max_m": g["max"], "within_30m": m["ref_line_within_m"]["30"],
             "ref_unmatched_parts": len(m.get("ref_parts_unmatched", [])), "ref_unmatched_acres": m.get("ref_unmatched_acres", 0.0),
+            "no_part_overlaps": bool(m.get("no_part_overlaps", False)),
             "counted": rec["counts_toward_published_error_rate"], "why_not_counted": rec["why_not_counted"],
             "synthetic": rec["synthetic"], "run_id": rec["ours"]["run_id"], "validated_utc": rec["validated_utc"]}
 

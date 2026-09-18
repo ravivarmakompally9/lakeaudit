@@ -90,7 +90,7 @@ Against OSM (runs of 18 Sep 2026): Hussain Sagar IoU 0.96, gap median 7 m / p95 
 one 20 m Sentinel-2 pixel.
 
 The app's Lake screen shows these under *How wrong can this line be?*, with the notified-FTL box first. It stays
-*Not yet measured* until a gated sheet is compared. `/lakes` and `/lake/{id}` carry them as `validation` (current run only).
+*Not yet measured* until a gated sheet is compared. A reference piece with no water in our line adds one "Missed: …" line to its box. `/lakes` and `/lake/{id}` carry them as `validation` (current run only).
 
 ### The web app
 

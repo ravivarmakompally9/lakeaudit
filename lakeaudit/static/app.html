@@ -107,6 +107,7 @@ details.manual[open] summary::after{transform:rotate(-135deg)}
 .vgrid b{display:block;font:500 16px/1.3 var(--mono)}
 .vgrid span{display:block;font-size:12px;line-height:1.3;color:var(--muted)}
 .fine{margin:8px 0 0;font-size:12.5px;line-height:1.4;color:var(--muted)}
+.fine.miss{color:var(--ink)}
 details.prov{margin-top:12px;font-size:13px}
 details.prov summary{min-height:44px;display:flex;align-items:center;cursor:pointer;color:var(--teal);font-weight:500}
 details.prov dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;padding:12px;background:var(--paper);border-radius:8px}
@@ -374,6 +375,12 @@ function validationHTML(c) {
   const rows = c.validation || [];
   const official = rows.filter(r => r.kind === 'notified_ftl'), others = rows.filter(r => r.kind !== 'notified_ftl');
   const why = r => r.synthetic ? 'synthetic data' : `the ${KIND[r.kind] || r.kind} is not the notified FTL`;
+  // a piece of the outline with no water in our line is listed, not averaged into the gaps
+  const missed = r => r.no_part_overlaps
+    ? '<p class="fine miss">No part of this outline overlaps our line (a different lake, or no water seen). The gaps above cover all of it.</p>'
+    : r.ref_unmatched_parts
+      ? `<p class="fine miss">Missed: ${r.ref_unmatched_parts === 1 ? 'a separate piece' : `${esc(r.ref_unmatched_parts)} separate pieces`} of this outline (${esc(acres(r.ref_unmatched_acres))}) with no water in our line. Not included in the gaps above.</p>`
+      : '';
   const block = r => `<div class="val" data-kind="${esc(r.kind)}">
       <div class="val-h"><b>vs ${esc(KIND[r.kind] || r.kind)}</b>${r.kind === 'notified_ftl' ? '' : '<span class="pill">not the FTL</span>'}</div>
       <div class="vgrid">
@@ -381,6 +388,7 @@ function validationHTML(c) {
         <div><b>${esc(num(r.gap_median_m))} m</b><span>Typical gap</span></div>
         <div><b>${esc(num(r.gap_p95_m))} m</b><span>95 % within</span></div>
       </div>
+      ${missed(r)}
       <p class="fine">${r.counted ? 'Counts toward the published error rate.' : `Not counted in the error rate: ${esc(why(r))}.`}</p></div>`;
   const pending = `<div class="val pending" data-kind="notified_ftl"><div class="val-h"><b>vs notified FTL (HMDA)</b></div>
       <p class="fine">Not yet measured. The published error rate starts when the first HMDA sheet passes the three gates and is compared.</p></div>`;

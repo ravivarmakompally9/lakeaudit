@@ -112,4 +112,5 @@ def test_lake_cards_carry_current_validation_only(client, tmp_path):
     rows = _card(client, "nalla_cheruvu_kukatpally")["validation"]        # re-read per request: no restart needed
     assert [r["kind"] for r in rows] == ["osm_shoreline"]
     assert rows[0]["iou"] == 1.0 and rows[0]["counted"] is False and rows[0]["synthetic"] is True
+    assert rows[0]["ref_unmatched_parts"] == 0 and rows[0]["no_part_overlaps"] is False
     assert client.get("/lake/nalla_cheruvu_kukatpally").json()["card"]["validation"] == rows
