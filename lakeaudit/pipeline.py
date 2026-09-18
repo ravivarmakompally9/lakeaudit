@@ -44,6 +44,7 @@ def run_lake(repo_root: Path, lake_id: str, *, offline: bool = False, years: lis
     t0 = time.time()
     source = "sample" if offline else "stac"
     log.info("run %s  lake=%s  source=%s  commit=%s  params=%s", prov.run_id, lake.id, source, prov.code_commit, prov.params_hash)
+    log.info("register: seed (%.5f, %.5f) verified=%s  years=%s", lake.seed_lat, lake.seed_lon, lake.seed_verified, years)
 
     # ---------------------------------------------------------------- 1. seed
     footprints = []
@@ -90,6 +91,10 @@ def run_lake(repo_root: Path, lake_id: str, *, offline: bool = False, years: lis
                                           "no scene with a clear ROI in the post-monsoon window — insufficient data"))
                 log.warning("year %s: no clear scene (%d rejected)", yr, len(rej))
                 continue
+            gs, ss = sc.extra.get("green_stats", {}), sc.extra.get("swir_stats", {})
+            log.info("year %s  bands: green n=%s p50=%s  swir n=%s p50=%s  (raster:bands=%s)", yr, gs.get("n_finite"),
+                     None if gs.get("p50") is None else round(gs["p50"], 4), ss.get("n_finite"),
+                     None if ss.get("p50") is None else round(ss["p50"], 4), sc.extra.get("green_raster_bands"))
             wr = extract_water(sc, roi_mask, seed_mask, cfg["water"], cfg["boundary"]["simplify_tolerance_m"])
             waters.append(wr)
             log.info("year %s  %s  %s  area=%.2f ac  thr=%.3f (%s)  cloud=%.2f", yr, sc.acquired, sc.scene_id,

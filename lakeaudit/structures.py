@@ -14,6 +14,7 @@ from shapely.geometry import Polygon, MultiPolygon, shape
 from shapely.ops import unary_union
 
 from .geo import utm_crs_for, to_utm, area_m2
+from .register import UA, OVERPASS_MIRRORS
 
 _OVERPASS_BLDG = """
 [out:json][timeout:90];
@@ -39,8 +40,17 @@ class Structure:
 def fetch_osm_buildings(bbox_wgs, overpass_url: str, timeout: int = 120) -> list[tuple[str, Polygon, dict]]:
     minx, miny, maxx, maxy = bbox_wgs
     q = _OVERPASS_BLDG.format(s=miny, w=minx, n=maxy, e=maxx)
-    r = requests.post(overpass_url, data={"data": q}, timeout=timeout)
-    r.raise_for_status()
+    last = None
+    for url in [overpass_url] + [u for u in OVERPASS_MIRRORS if u != overpass_url]:
+        try:
+            r = requests.post(url, data={"data": q}, headers=UA, timeout=timeout)
+            if r.status_code == 200:
+                break
+            last = RuntimeError(f"{url} -> HTTP {r.status_code}")
+        except Exception as e:
+            last = e
+    else:
+        raise last or RuntimeError("all Overpass mirrors failed")
     out = []
     for el in r.json().get("elements", []):
         tags = el.get("tags") or {}

@@ -112,6 +112,13 @@ def extract_water(scene: Scene, roi_mask: np.ndarray, seed_mask: np.ndarray | No
                   simplify_m: float = 0.0) -> WaterResult:
     idx = mndwi(scene.green, scene.swir)
     t, method, note = choose_threshold(idx, roi_mask, cfg["otsu_fallback_threshold"])
+    if seed_mask is not None and seed_mask.any():
+        sv = idx[seed_mask & np.isfinite(idx)]
+        gv = scene.green[seed_mask & np.isfinite(scene.green)]
+        wv = scene.swir[seed_mask & np.isfinite(scene.swir)]
+        diag = (f"seed px: n={sv.size} mndwi_med={np.median(sv):.3f} green_med={np.median(gv) if gv.size else float('nan'):.4f} "
+                f"swir_med={np.median(wv) if wv.size else float('nan'):.4f} frac>0={(sv > 0).mean() if sv.size else float('nan'):.2f}")
+        note = (note + " | " + diag).strip(" |")
     m = water_mask(
         idx, t, roi_mask, scene.scl, cfg["scl_cloud_classes"], cfg["min_water_patch_px"],
         seed_mask, cfg["keep_largest_component_only"],

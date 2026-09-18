@@ -106,7 +106,7 @@ def read_scene(item, grid: Grid, cfg: dict, year: int) -> Scene:
     assets = item.assets
     g_href = assets[cfg["green_band"]].href
     s_href = assets[cfg["swir_band"]].href
-    green = _read_on_grid(g_href, grid, Resampling.average).astype("float32")
+    green = _read_on_grid(g_href, grid, Resampling.bilinear).astype("float32")
     swir = _read_on_grid(s_href, grid, Resampling.bilinear).astype("float32")
     scl = None
     if "scl" in assets:
@@ -125,6 +125,11 @@ def read_scene(item, grid: Grid, cfg: dict, year: int) -> Scene:
     green = _scale(green, assets[cfg["green_band"]])
     swir = _scale(swir, assets[cfg["swir_band"]])
 
+    def _stats(a):
+        v = a[np.isfinite(a)]
+        return {"n_finite": int(v.size), "p5": float(np.percentile(v, 5)) if v.size else None,
+                "p50": float(np.median(v)) if v.size else None, "p95": float(np.percentile(v, 95)) if v.size else None}
+
     return Scene(
         scene_id=item.id,
         acquired=str(item.datetime.date()) if item.datetime else item.properties.get("datetime", "")[:10],
@@ -132,7 +137,10 @@ def read_scene(item, grid: Grid, cfg: dict, year: int) -> Scene:
         year=year,
         green=green, swir=swir, scl=scl, grid=grid,
         source="stac",
-        extra={"platform": item.properties.get("platform"), "mgrs": item.properties.get("s2:mgrs_tile") or item.properties.get("grid:code")},
+        extra={"platform": item.properties.get("platform"), "mgrs": item.properties.get("s2:mgrs_tile") or item.properties.get("grid:code"),
+               "green_href": g_href, "swir_href": s_href,
+               "green_raster_bands": (assets[cfg["green_band"]].extra_fields or {}).get("raster:bands"),
+               "green_stats": _stats(green), "swir_stats": _stats(swir)},
     )
 
 

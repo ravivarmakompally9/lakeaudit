@@ -7,6 +7,7 @@
   serve     [--port 8000]                                 start the lookup API + demo page
   load-db   --lake ID --dsn postgresql://...              ingest a run into PostGIS
   doctor                                                  check that the public data sources are reachable
+  debug     --lake ID --year YYYY                         draw the raw green / swir / MNDWI / SCL for one scene
 """
 from __future__ import annotations
 
@@ -101,6 +102,44 @@ def cmd_doctor(a):
     sys.exit(0 if ok else 1)
 
 
+def cmd_debug(a):
+    import numpy as np, yaml
+    import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
+    from .register import load_register, resolve_seed
+    from .imagery import make_grid, search_scenes, read_scene
+    from .water import rasterize_roi, mndwi
+    from .pipeline import _roi_bbox
+    lakes, _ = load_register(ROOT / "configs" / "lakes.yaml")
+    cfg = yaml.safe_load((ROOT / "configs" / "thresholds.yaml").read_text())
+    lake = next(l for l in lakes if l.id == a.lake)
+    lake = resolve_seed(lake, cfg["structures"]["overpass_url"])
+    bounds, roi = _roi_bbox(lake, cfg["imagery"]["roi_pad_m"])
+    grid = make_grid(bounds, cfg["imagery"]["work_resolution_m"])
+    items = search_scenes(bounds, a.year, cfg["imagery"])
+    print(f"seed={lake.seed_source} ids={lake.seed_osm_ids}  grid {grid.width}x{grid.height} @ {grid.res_m} m EPSG:{grid.crs.to_epsg()}")
+    print(f"{len(items)} candidate scenes; using clearest: {items[0].id if items else None}")
+    if not items:
+        sys.exit(2)
+    sc = read_scene(items[0], grid, cfg["imagery"], a.year)
+    roi_mask = rasterize_roi(roi, grid); seed_mask = rasterize_roi(lake.seed_polygon, grid)
+    idx = mndwi(sc.green, sc.swir)
+    print("green href :", sc.extra["green_href"]); print("raster:bands:", sc.extra["green_raster_bands"])
+    for name, arr in (("green", sc.green), ("swir", sc.swir), ("mndwi", idx)):
+        v = arr[roi_mask & np.isfinite(arr)]; sv = arr[seed_mask & np.isfinite(arr)]
+        print(f"{name:6s} ROI n={v.size:6d} p5={np.percentile(v,5) if v.size else float('nan'):.4f} p50={np.median(v) if v.size else float('nan'):.4f} p95={np.percentile(v,95) if v.size else float('nan'):.4f}"
+              f"   SEED n={sv.size:5d} p50={np.median(sv) if sv.size else float('nan'):.4f}")
+    if sc.scl is not None:
+        u, c = np.unique(sc.scl[roi_mask], return_counts=True); print("SCL classes in ROI:", dict(zip(u.tolist(), c.tolist())))
+    print(f"roi_mask px={int(roi_mask.sum())}  seed_mask px={int(seed_mask.sum())}  frac(mndwi>0 in ROI)={(idx[roi_mask]>0).mean():.3f}")
+    fig, axs = plt.subplots(1, 4, figsize=(16, 4.2))
+    for ax, (name, arr, kw) in zip(axs, (("green", sc.green, {}), ("swir16", sc.swir, {}), ("MNDWI", idx, dict(vmin=-1, vmax=1, cmap="RdBu")), ("SCL", sc.scl, dict(cmap="tab20", vmin=0, vmax=11)))):
+        if arr is None: continue
+        im = ax.imshow(arr, **kw); ax.set_title(name); ax.contour(seed_mask, levels=[0.5], colors="k", linewidths=0.8); plt.colorbar(im, ax=ax, fraction=0.04)
+    fig.suptitle(f"{lake.name} — {sc.scene_id} — black outline = seed polygon"); fig.tight_layout()
+    out = ROOT / "outputs" / lake.id; out.mkdir(parents=True, exist_ok=True)
+    p = out / f"debug_{a.year}.png"; fig.savefig(p, dpi=110); print("wrote", p)
+
+
 def cmd_serve(a):
     import uvicorn
     uvicorn.run("lakeaudit.api:app", host="0.0.0.0", port=a.port, reload=False)
@@ -124,6 +163,7 @@ def main(argv=None):
     pd = sp.add_parser("pdf"); pd.add_argument("--pdf", required=True); pd.add_argument("--perimeter", type=float); pd.set_defaults(fn=cmd_pdf)
     s = sp.add_parser("serve"); s.add_argument("--port", type=int, default=8000); s.set_defaults(fn=cmd_serve)
     sp.add_parser("doctor").set_defaults(fn=cmd_doctor)
+    dbg = sp.add_parser("debug"); dbg.add_argument("--lake", required=True); dbg.add_argument("--year", type=int, default=2023); dbg.set_defaults(fn=cmd_debug)
     d = sp.add_parser("load-db"); d.add_argument("--lake", required=True); d.add_argument("--dsn", required=True); d.set_defaults(fn=cmd_load_db)
 
     a = p.parse_args(argv)

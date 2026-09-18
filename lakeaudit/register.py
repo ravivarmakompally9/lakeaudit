@@ -3,6 +3,7 @@ from OpenStreetMap. The OSM polygon is only a SEED for the region of interest �
 it is never used as a boundary."""
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,6 +14,10 @@ from shapely.geometry import Point, Polygon, MultiPolygon, shape
 from shapely.ops import unary_union
 
 from .geo import utm_crs_for, to_utm, to_wgs, area_m2
+
+log = logging.getLogger("lakeaudit")
+UA = {"User-Agent": "lakeaudit/0.2 (academic research; Vardhaman College of Engineering; contact via repo)"}
+OVERPASS_MIRRORS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"]
 
 
 @dataclass
@@ -99,13 +104,21 @@ def resolve_seed(lake: Lake, overpass_url: str, timeout: int = 90) -> Lake:
     """Snap the lake to the nearest matching OSM water polygon. Falls back to a
     circle if OSM is unreachable or nothing matches — and says so."""
     q = _OVERPASS_Q.format(r=lake.search_radius_m, lat=lake.seed_lat, lon=lake.seed_lon)
-    try:
-        r = requests.post(overpass_url, data={"data": q}, timeout=timeout)
-        r.raise_for_status()
-        polys = _osm_elements_to_polys(r.json().get("elements", []))
-    except Exception as e:  # network, rate limit, parse
-        polys = []
-        lake.notes = (lake.notes + f" | OSM lookup failed: {type(e).__name__}").strip(" |")
+    polys = []
+    urls = [overpass_url] + [u for u in OVERPASS_MIRRORS if u != overpass_url]
+    for url in urls:
+        try:
+            r = requests.post(url, data={"data": q}, headers=UA, timeout=timeout)
+            if r.status_code != 200:
+                log.warning("Overpass %s -> HTTP %s: %s", url, r.status_code, r.text[:120].replace("\n", " "))
+                continue
+            polys = _osm_elements_to_polys(r.json().get("elements", []))
+            log.info("Overpass %s -> %d water polygons within %d m", url, len(polys), lake.search_radius_m)
+            break
+        except Exception as e:  # network, rate limit, parse
+            log.warning("Overpass %s failed: %s: %s", url, type(e).__name__, str(e)[:120])
+    if not polys:
+        lake.notes = (lake.notes + " | OSM lookup returned nothing — using fallback circle").strip(" |")
 
     seed_pt = Point(lake.seed_lon, lake.seed_lat)
     rx = re.compile(lake.osm_name_regex)
