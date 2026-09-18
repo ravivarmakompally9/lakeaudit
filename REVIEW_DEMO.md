@@ -24,6 +24,8 @@
    python -m lakeaudit serve        # then open http://localhost:8000
    ```
    Type any point near a lake edge with GPS accuracy 40 m → it refuses. Same point with accuracy 5 m → verdict. Screenshot both.
+   Tested point: **lat 17.430068, lon 78.486859** (Hussain Sagar east shore, 20 m outside the extent) →
+   40 m: ABSTAINED · 5 m: `in_buffer` (30 m ring). The page's default (lake centre) is 518 m from the edge, so it won't abstain.
 
 4. **Run the offline fallback once, so it exists**
    ```bash
