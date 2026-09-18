@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 from pathlib import Path
+from urllib.parse import urlencode
 
 import yaml
 from fastapi import FastAPI, Query
@@ -21,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from shapely.geometry import shape, Point
 
 from .geo import utm_crs_for, to_utm, to_wgs, m2_to_acres
+from .validate import lake_validations
 
 app = FastAPI(title="lakeaudit lookup", version="0.2")
 _ROOT = Path(__file__).resolve().parents[1]
@@ -54,23 +57,53 @@ def _load():
         _STATE["lakes"][d.name] = v
 
 
+def _float(v, nd: int):
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return None if math.isnan(f) else round(f, nd)
+
+
 def _area_by_year(d: Path, summary: dict) -> list[dict]:
     """One row per requested year, from water_by_year.csv. `status` says why a year has no area:
-    'insufficient' = no usable scene; 'no_open_water' = clear scene, nothing at the seed reads as water."""
+    'insufficient' = no usable scene (acres null, insufficient true); 'no_open_water' = clear scene,
+    nothing at the seed reads as water (acres 0 — a measurement, not a gap). An insufficient year keeps
+    the scene it rejected and that scene's cloud fraction over the lake, when there was one."""
     rows = {}
     if (d / "water_by_year.csv").exists():
         with (d / "water_by_year.csv").open() as fh:
             rows = {int(r["year"]): r for r in csv.DictReader(fh)}
     with_data = set(summary.get("years_with_data") or [])
     no_water = set(summary.get("years_no_open_water") or [])
+    years = summary.get("years_requested") or (_STATE["cfg"] or {}).get("imagery", {}).get("years") or sorted(rows)
     out = []
-    for y in summary.get("years_requested") or sorted(rows):
+    for y in sorted(years):
         r = rows.get(y) or {}
         status = "observed" if y in with_data else ("no_open_water" if y in no_water else "insufficient")
-        out.append({"year": y, "status": status,
-                    "acres": round(float(r["area_acres"]), 2) if status == "observed" and r.get("area_acres") else None,
-                    "scene_id": r.get("scene_id") or None, "acquired": r.get("acquired") or None})
+        acres = None if status == "insufficient" else _float(r.get("area_acres"), 2)
+        if status == "no_open_water" and acres is None:
+            acres = 0.0
+        out.append({"year": y, "status": status, "insufficient": status == "insufficient", "acres": acres,
+                    "scene_id": r.get("scene_id") or None, "acquired": r.get("acquired") or None,
+                    "cloud_fraction": _float(r.get("roi_cloud_fraction"), 4)})
     return out
+
+
+def _history(rows: list[dict]) -> dict:
+    """Peak and latest of the years that have an area, and the change between them.
+    change_pct is null with fewer than two such years (or a zero peak). Since the peak is the
+    maximum, change_pct is never positive: 0 means the latest year is the peak year."""
+    known = [r for r in rows if r["acres"] is not None]
+    if not known:
+        return {"peak_year": None, "peak_acres": None, "latest_year": None, "latest_acres": None, "change_pct": None}
+    peak = max(known, key=lambda r: r["acres"])            # first (earliest) year on a tie
+    latest = known[-1]
+    change = None
+    if len(known) >= 2 and peak["acres"] > 0:
+        change = round((latest["acres"] - peak["acres"]) / peak["acres"] * 100, 1)
+    return {"peak_year": peak["year"], "peak_acres": peak["acres"],
+            "latest_year": latest["year"], "latest_acres": latest["acres"], "change_pct": change}
 
 
 def _card(lake_id: str, v: dict) -> dict:
@@ -110,6 +143,12 @@ def _card(lake_id: str, v: dict) -> dict:
     }
 
 
+def _card_now(v: dict) -> dict:
+    """The card plus validation records, re-read on every request so a new `validate` shows
+    without a restart. Only records made against the run being served appear."""
+    return {**v["card"], "validation": lake_validations(v["dir"], v["run"]["run_id"])}
+
+
 def _geojson(p: Path) -> dict:
     return json.loads(p.read_text()) if p.exists() else {"type": "FeatureCollection", "features": []}
 
@@ -122,7 +161,7 @@ def _startup():
 @app.get("/lakes")
 def lakes():
     """One card per processed lake. Lakes in the register with no run do not appear."""
-    return [v["card"] for v in _STATE["lakes"].values()]
+    return [_card_now(v) for v in _STATE["lakes"].values()]
 
 
 @app.get("/lake/{lake_id}")
@@ -130,7 +169,7 @@ def lake(lake_id: str):
     v = _STATE["lakes"].get(lake_id)
     if not v:
         return JSONResponse({"error": f"unknown lake '{lake_id}'", "known": list(_STATE["lakes"])}, status_code=404)
-    return {"card": v["card"], "run": v["run"],
+    return {"card": _card_now(v), "run": v["run"],
             "boundary": _geojson(v["dir"] / "boundary.geojson"),
             "water_by_year": _geojson(v["dir"] / "water_by_year.geojson"),
             "structures": _geojson(v["dir"] / "structures.geojson")}

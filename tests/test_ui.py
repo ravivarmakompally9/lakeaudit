@@ -49,13 +49,29 @@ def _tree(tmp: Path, lakes: list[str], real: tuple[str, ...] = ()) -> Path:
     return tmp
 
 
+def _validate(root: Path, lid: str, grow_m: float) -> None:
+    """A reference `grow_m` outside the run's extent, measured with the real validate code."""
+    from shapely.geometry import mapping, shape
+    from lakeaudit.geo import to_utm, to_wgs, utm_crs_for
+    from lakeaudit.validate import load_reference, validate_lake
+    out = root / "outputs" / lid
+    ext = next(shape(f["geometry"]) for f in json.loads((out / "boundary.geojson").read_text())["features"]
+               if f["properties"]["layer"] == "max_observed_extent")
+    utm = utm_crs_for(ext.centroid.x, ext.centroid.y)
+    ref = out / "ref.geojson"
+    ref.write_text(json.dumps({"type": "Feature", "properties": {}, "geometry": mapping(to_wgs(to_utm(ext, utm).buffer(grow_m), utm))}))
+    validate_lake(root, lid, load_reference(ref, "osm_shoreline"))
+
+
 @pytest.fixture(scope="module")
 def trees(tmp_path_factory):
-    return {
-        "real": _tree(tmp_path_factory.mktemp("real"), ["alwal_cheruvu", "hussain_sagar", "nalla_cheruvu_kukatpally"],
-                      real=("hussain_sagar", "nalla_cheruvu_kukatpally")),
-        "synth": _tree(tmp_path_factory.mktemp("synth"), ["alwal_cheruvu"]),
-    }
+    real = _tree(tmp_path_factory.mktemp("real"), ["alwal_cheruvu", "hussain_sagar", "nalla_cheruvu_kukatpally"],
+                 real=("hussain_sagar", "nalla_cheruvu_kukatpally"))
+    _validate(real, "hussain_sagar", 12)
+    _validate(real, "nalla_cheruvu_kukatpally", 12)          # then made stale: must not show
+    p = real / "outputs" / "nalla_cheruvu_kukatpally" / "validation_osm_shoreline.json"
+    rec = json.loads(p.read_text()); rec["ours"]["run_id"] = "run_earlier"; p.write_text(json.dumps(rec))
+    return {"real": real, "synth": _tree(tmp_path_factory.mktemp("synth"), ["alwal_cheruvu"])}
 
 
 @pytest.fixture(scope="module")
@@ -200,6 +216,20 @@ def test_zoom_to_lake_button(app, server):
     w, s, e, n = card(server, "hussain_sagar")["bbox"]
     view = page.evaluate("(() => { const b = lakeaudit.map.getBounds(); return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]; })()")
     assert view[0] <= w and view[1] <= s and view[2] >= e and view[3] >= n
+
+
+@SIZES
+def test_lake_shows_how_wrong_the_line_can_be(app, size):
+    page = app(size)
+    page.locator("#lakeList .lake", has_text="Hussain Sagar").click()
+    vals = page.locator("#lake .val")
+    assert [vals.nth(i).get_attribute("data-kind") for i in range(vals.count())] == ["notified_ftl", "osm_shoreline"]
+    assert "Not yet measured" in vals.nth(0).inner_text()                         # the official witness comes first
+    osm = vals.nth(1).inner_text()
+    assert "not the ftl" in osm.lower() and "Overlap (IoU)" in osm and "12 m" in osm and "Not counted" in osm
+    page.click("#vLake [data-back]")
+    page.locator("#lakeList .lake", has_text="Nalla Cheruvu").click()             # its only record is stale
+    assert page.locator("#lake .val").count() == 1 and page.get_attribute("#lake .val", "data-kind") == "notified_ftl"
 
 
 def test_lake_data_source_opens(app):

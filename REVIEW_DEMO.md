@@ -84,7 +84,7 @@ Short on time: drop the first half of 6 (the area-class point); keep the 2.6 vs 
 
 **Live: the gates (45 s).** Run the clean CSV, then the dropped-digit one. *The official boundary lives in scanned PDFs. OCR lies. A dropped digit moves a vertex 7,000 km. Three checks, and a sheet that fails any one goes to a human — it never becomes a boundary.*
 
-**Live: how wrong can the line be (45 s).** `validation_osm_shoreline.png` for Hussain Sagar, then `validation-summary`.
+**Live: how wrong can the line be (45 s).** In the app, open Hussain Sagar and scroll to *How wrong can this line be?*: the notified FTL box says *Not yet measured*, the OSM box shows IoU 0.96 · 7 m · 36 m. Then `validation_osm_shoreline.png` and `validation-summary`. (Restart `serve` after running `validate` the first time. After that, new records show without a restart.)
 *This is the machinery for the number nobody publishes: IoU and the gap in metres, point by point along the line. The darker the dot, the further the reference line is from ours. Today the reference is OSM's shoreline, and that is not the FTL, so the tool itself prints "does not count". The bottom line reads n = 0: the published error rate starts when the first gated HMDA sheet goes in. A sheet that fails the gates is refused, never compared.* Point at the worst gap: *a channel narrower than one 20 m pixel. That is exactly the kind of limit we publish.*
 
 **Live: abstention (1 min).** The lookup page. 40 m accuracy → refuses, with the reason in plain words. 5 m → verdict. *This is the rule that makes the system safe to exist. Every other tool in this space answers anyway.*

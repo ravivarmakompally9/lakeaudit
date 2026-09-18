@@ -87,6 +87,9 @@ Against OSM (runs of 18 Sep 2026): Hussain Sagar IoU 0.96, gap median 7 m / p95 
 10 / 24 m · Nalla Cheruvu (Kukatpally) 0.84, 8 / 20 m. The worst gaps are channels and inlets narrower than
 one 20 m Sentinel-2 pixel.
 
+The app's Lake screen shows these under *How wrong can this line be?*, with the notified-FTL box first. It stays
+*Not yet measured* until a gated sheet is compared. `/lakes` and `/lake/{id}` carry them as `validation` (current run only).
+
 ### The web app
 
 `python -m lakeaudit serve`, then open http://localhost:8000. One panel, three screens:
@@ -112,7 +115,7 @@ Screenshots for the deck (server running): `python scripts/screenshots.py` → `
 
 ```bash
 pip install playwright && python -m playwright install chromium    # once, for the browser tests
-python -m pytest -q tests               # 48: gates, water extraction, validation, API, and every button in the web app
+python -m pytest -q tests               # 51: gates, water extraction, validation, API, and every button in the web app
 ```
 
 `tests/test_ui.py` clicks every button and control in a real browser (desktop and phone sizes) against a throwaway

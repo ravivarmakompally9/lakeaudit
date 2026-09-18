@@ -1,6 +1,7 @@
 """API contract for the map app: only lakes a run produced appear (never invent geometry),
 /nearby and /lookup share UTM distance + ST_Intersects semantics, lake_id scopes /lookup,
 and the abstention rule is untouched. Runs on synthetic --offline outputs in a temp tree."""
+import json
 import shutil
 from pathlib import Path
 
@@ -94,3 +95,21 @@ def test_app_and_static_are_served(client):
     assert client.get("/static/leaflet/leaflet.js").status_code == 200
     assert client.get("/static/leaflet/images/layers.png").status_code == 200
     assert client.get("/classic").status_code == 200
+
+
+def test_lake_cards_carry_current_validation_only(client, tmp_path):
+    from lakeaudit.validate import load_reference, validate_lake
+    assert _card(client, "alwal_cheruvu")["validation"] == []
+    ref = tmp_path / "ref.geojson"
+    ext = next(f for f in client.get("/lake/nalla_cheruvu_kukatpally").json()["boundary"]["features"]
+               if f["properties"]["layer"] == "max_observed_extent")
+    ref.write_text(json.dumps({"type": "Feature", "properties": {}, "geometry": ext["geometry"]}))   # identical line
+    out = api._ROOT / "outputs" / "nalla_cheruvu_kukatpally"
+    validate_lake(api._ROOT, "nalla_cheruvu_kukatpally", load_reference(ref, "osm_shoreline"))
+    stale = json.loads((out / "validation_osm_shoreline.json").read_text())
+    stale["ours"]["run_id"] = "run_earlier"; stale["reference"]["kind"] = "field_gps"
+    (out / "validation_field_gps.json").write_text(json.dumps(stale))      # measured a line that no longer exists
+    rows = _card(client, "nalla_cheruvu_kukatpally")["validation"]        # re-read per request: no restart needed
+    assert [r["kind"] for r in rows] == ["osm_shoreline"]
+    assert rows[0]["iou"] == 1.0 and rows[0]["counted"] is False and rows[0]["synthetic"] is True
+    assert client.get("/lake/nalla_cheruvu_kukatpally").json()["card"]["validation"] == rows

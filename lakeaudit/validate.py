@@ -271,6 +271,29 @@ def render_validation(out_dir: Path, rec: dict, ours_wgs, ref_wgs, arrays: dict)
     return p
 
 
+def _row(rec: dict) -> dict:
+    m, g = rec["metrics"], rec["metrics"]["gap_ref_to_ours_m"]
+    return {"lake_id": rec["lake_id"], "kind": rec["reference"]["kind"], "reference_date": rec["reference"].get("date"),
+            "iou": m["iou"], "area_error_pct": m["area_error_pct"], "gap_median_m": g["median"], "gap_p95_m": g["p95"],
+            "gap_max_m": g["max"], "within_30m": m["ref_line_within_m"]["30"],
+            "counted": rec["counts_toward_published_error_rate"], "why_not_counted": rec["why_not_counted"],
+            "synthetic": rec["synthetic"], "run_id": rec["ours"]["run_id"], "validated_utc": rec["validated_utc"]}
+
+
+def lake_validations(out_dir: Path, run_id: str) -> list[dict]:
+    """Validation rows for the line this run drew. A record made against an earlier run of
+    the lake measured a line that no longer exists, so it is left out."""
+    rows = []
+    for p in sorted(out_dir.glob("validation_*.json")):
+        try:
+            rec = json.loads(p.read_text())
+        except (OSError, ValueError):
+            continue
+        if rec.get("ours", {}).get("run_id") == run_id:
+            rows.append(_row(rec))
+    return rows
+
+
 def summarize(root: Path) -> dict:
     """Every validation record on disk. A record is stale when its lake has been re-run
     since — the line it measured no longer exists — and is left out of the aggregate."""
@@ -279,12 +302,7 @@ def summarize(root: Path) -> dict:
         rec = json.loads(p.read_text())
         run_p = p.parent / "run.json"
         current = json.loads(run_p.read_text()).get("run_id") if run_p.exists() else None
-        m, g = rec["metrics"], rec["metrics"]["gap_ref_to_ours_m"]
-        rows.append({"lake_id": rec["lake_id"], "kind": rec["reference"]["kind"], "iou": m["iou"],
-                     "area_error_pct": m["area_error_pct"], "gap_median_m": g["median"], "gap_p95_m": g["p95"],
-                     "gap_max_m": g["max"], "within_30m": m["ref_line_within_m"]["30"],
-                     "counted": rec["counts_toward_published_error_rate"], "stale": rec["ours"]["run_id"] != current,
-                     "synthetic": rec["synthetic"]})
+        rows.append({**_row(rec), "stale": rec["ours"]["run_id"] != current})
     live = [r for r in rows if not r["stale"]]
     by_kind = {}
     for k in sorted({r["kind"] for r in live}):

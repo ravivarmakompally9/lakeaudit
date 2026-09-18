@@ -50,7 +50,7 @@ What must work on the laptop tonight, in order:
    → Cannot answer; 5 → In the buffer ring. Keep it simple — the user asked for clean, not dense. Old form: `/classic`.
 5. `python -m lakeaudit gates --csv sample_data/ftl_vertices_clean.csv --perimeter 1858.4` (PASS) and
    `..._ocr_dropped_digit.csv` (FAIL gate 1).
-6. `python -m pytest -q tests` → 48 passed (~15 s). `test_ui.py` clicks every button in Chromium (needs
+6. `python -m pytest -q tests` → 51 passed (~15 s). `test_ui.py` clicks every button in Chromium (needs
    `pip install playwright && python -m playwright install chromium`; skips if missing). Add a test for every new control.
 6b. `python -m lakeaudit validate --lake hussain_sagar --kind osm_shoreline` → IoU 0.96, gap median 7 m / p95 36 m;
    `validation-summary` ends with published error rate n = 0. Only gated notified FTLs on real runs count; OSM never does.
