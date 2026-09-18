@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS structures (
   structure_id      text NOT NULL,
   lake_id           text REFERENCES lakes(lake_id),
   footprint_source  text,
-  zone              text CHECK (zone IN ('inside_ftl','in_buffer','outside')),
+  zone              text CHECK (zone IN ('inside_extent','in_buffer','outside')),
   dist_to_extent_m  double precision,
   footprint_area_m2 double precision,
   first_seen_year   int,                  -- filled by the dating stage (2016-2023), NULL until then

@@ -33,7 +33,7 @@ What must work on the laptop tonight, in order:
    traces the lake in `outputs/hussain_sagar/preview.png` and `map.html`.
 2. `python -m lakeaudit run --lake nalla_cheruvu_kukatpally` — HYDRAA's official figure for this lake
    is **27 acres total, 14 encroached**; our max-extent acreage is compared against that in the demo.
-   Verified: max observed extent **13.7 ac** (2022 9.7 · 2024 10.2 · 2025 12.9; 2019–21, 2023 no open
+   Verified: max observed extent **13.3 ac** (2022 9.1 · 2024 10.0 · 2025 12.7; 2019–21, 2023 no open
    water at MNDWI>0). ≈ the 13 ac HYDRAA says remain; S2-since-2019 cannot witness land built over
    earlier — that is the case for Landsat 1984→. Area class from observed extent = small (9 m); on
    HYDRAA's 27 ac (10.9 ha) it would be 30 m.

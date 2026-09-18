@@ -80,7 +80,7 @@ def lookup(lat: float = Query(...), lon: float = Query(...), accuracy_m: float =
             best = cand
     v = best["v"]
     run = v["run"]
-    zone = "inside_ftl" if best["inside_ext"] else ("in_buffer" if best["in_ring"] else "outside")
+    zone = "inside_extent" if best["inside_ext"] else ("in_buffer" if best["in_ring"] else "outside")
     base = {
         "lake_id": best["lake_id"], "lake_name": run["lake"]["name"],
         "boundary_method": "max_observed_extent",
@@ -101,7 +101,7 @@ def lookup(lat: float = Query(...), lon: float = Query(...), accuracy_m: float =
                 "reason": f"Your position is uncertain to ±{accuracy_m:.0f} m but only {best['d_edge']:.0f} m from the boundary line. "
                           f"We cannot tell which side you are on, so we will not guess."}
     return {**base, "abstain": False, "verdict": zone,
-            "plain": {"inside_ftl": "Inside the maximum observed water extent.",
+            "plain": {"inside_extent": "Inside the maximum observed water extent.",
                       "in_buffer": f"Outside the extent but within the {v['buffer_width_m']:.0f} m buffer ring.",
                       "outside": "Outside both the extent and the buffer ring."}[zone]}
 

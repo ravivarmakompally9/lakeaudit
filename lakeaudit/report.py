@@ -48,7 +48,7 @@ def render_preview(out_dir: Path, title: str, source: str) -> Path:
         for f in w:
             if f["properties"]["year"] == yr:
                 _plot_geom(ax, shape(f["geometry"]), color=cmap(0.35 + 0.6 * i / max(1, len(years) - 1)), alpha=0.5, lw=0)
-    zcol = {"inside_ftl": "#a8123a", "in_buffer": "#c9791c", "outside": "#43565a"}
+    zcol = {"inside_extent": "#a8123a", "in_buffer": "#c9791c", "outside": "#43565a"}
     for f in s:
         _plot_geom(ax, shape(f["geometry"]), color=zcol[f["properties"]["zone"]], alpha=0.95, lw=0)
     import math
@@ -61,7 +61,7 @@ def render_preview(out_dir: Path, title: str, source: str) -> Path:
                Patch(color="#e0b96a", alpha=0.55, label="statutory buffer ring"),
                Patch(color=cmap(0.4), alpha=0.5, label=f"water, {years[0] if years else '?'}"),
                Patch(color=cmap(0.95), alpha=0.5, label=f"water, {years[-1] if years else '?'}"),
-               Patch(color=zcol["inside_ftl"], label="building inside extent"),
+               Patch(color=zcol["inside_extent"], label="building inside extent"),
                Patch(color=zcol["in_buffer"], label="building in buffer"),
                Patch(color=zcol["outside"], label="building outside")]
     ax.legend(handles=handles, loc="lower left", fontsize=8, frameon=True)
@@ -114,7 +114,7 @@ const yrs=[...new Set(W.features.map(f=>f.properties.year))].sort();
 const wl={{}};
 yrs.forEach((y,i)=>{{const t=yrs.length>1?i/(yrs.length-1):1; wl['water '+y]=L.geoJSON(W,{{filter:f=>f.properties.year===y,style:{{color:'#0a6f7d',weight:1,fillColor:'#0a6f7d',fillOpacity:.15+.35*t}}}});}});
 if(yrs.length) wl['water '+yrs[yrs.length-1]].addTo(m);
-const zc={{inside_ftl:'#a8123a',in_buffer:'#c9791c',outside:'#43565a'}};
+const zc={{inside_extent:'#a8123a',in_buffer:'#c9791c',outside:'#43565a'}};
 const st=L.geoJSON(S,{{style:f=>({{color:zc[f.properties.zone],weight:1,fillColor:zc[f.properties.zone],fillOpacity:.85}}),
  onEachFeature:(f,l)=>l.bindPopup('<b>'+f.properties.structure_id+'</b><br>zone: '+f.properties.zone+'<br>distance to extent: '+f.properties.dist_to_extent_m+' m<br>run: '+f.properties.run_id+'<br>commit: '+f.properties.code_commit)}}).addTo(m);
 L.control.layers(null,Object.assign({{'buffer ring':ring,'max observed extent':ext,'OSM seed polygon':seed,'buildings':st}},wl),{{collapsed:false}}).addTo(m);

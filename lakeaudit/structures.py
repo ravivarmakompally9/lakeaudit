@@ -31,7 +31,7 @@ class Structure:
     structure_id: str
     source: str
     footprint_wgs: Polygon | MultiPolygon
-    zone: str                    # inside_ftl | in_buffer | outside
+    zone: str                    # inside_extent | in_buffer | outside
     dist_to_extent_m: float      # 0 if intersects extent; else distance to extent edge
     footprint_area_m2: float
     tags: dict
@@ -81,7 +81,7 @@ def classify(footprints: list[tuple[str, Polygon, dict]], extent_wgs, ring_wgs, 
     for sid, poly, tags in footprints:
         p_utm = to_utm(poly, utm)
         if p_utm.intersects(extent_utm):
-            zone = "inside_ftl"
+            zone = "inside_extent"
             dist = 0.0
         elif p_utm.intersects(ring_utm):
             zone = "in_buffer"
@@ -98,8 +98,8 @@ def classify(footprints: list[tuple[str, Polygon, dict]], extent_wgs, ring_wgs, 
 
 
 def zone_summary(structs: list[Structure]) -> dict:
-    s = {"inside_ftl": 0, "in_buffer": 0, "outside": 0}
-    a = {"inside_ftl": 0.0, "in_buffer": 0.0, "outside": 0.0}
+    s = {"inside_extent": 0, "in_buffer": 0, "outside": 0}
+    a = {"inside_extent": 0.0, "in_buffer": 0.0, "outside": 0.0}
     for st in structs:
         s[st.zone] += 1
         a[st.zone] += st.footprint_area_m2
