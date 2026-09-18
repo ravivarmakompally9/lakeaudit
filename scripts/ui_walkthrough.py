@@ -54,11 +54,20 @@ def walk(p, base: str, out: Path, name: str, opts: dict) -> list[str]:
         check(overflow <= 0, f"{tag}: horizontal page scroll of {overflow}px")
         print(f"  {path}")
 
+    def labels_inside(tag: str, names: list[str] | None = None):
+        boxes = page.eval_on_selector_all(".leaflet-tooltip", """els => els
+            .filter(e => getComputedStyle(e).display !== 'none')
+            .map(e => { const r = e.getBoundingClientRect(); return {t: e.textContent, l: r.left, r: r.right, w: innerWidth}; })""")
+        for b in boxes:
+            if names is None or any(nm in b["t"] for nm in names):
+                check(b["l"] >= 0 and b["r"] <= b["w"], f"{tag}: map label clipped at the viewport edge: {b['t']!r}")
+
     page.goto(base, wait_until="domcontentloaded")
     page.wait_for_selector('body[data-ready="1"]', timeout=60000)
     check(page.locator("#lakeList .item").count() >= 1, "home: no lakes listed")
     check("lake" in page.inner_text("#brandMeta"), "home: brand badge has no lake count")
     shot("home")
+    labels_inside("home")
 
     first = page.locator("#lakeList .item").first
     lake_name = first.locator(".nm").inner_text()
@@ -78,6 +87,8 @@ def walk(p, base: str, out: Path, name: str, opts: dict) -> list[str]:
     check(page.locator("#resBody .card.verdict, #resBody .card.refusal").count() == 1, "located: no verdict or refusal card")
     check(page.locator("#resBody .card.dark + .card").count() == 1, "located: 'How sure are we' card is not first")
     shot("located")
+    nearest = page.evaluate("lakeaudit.state.byId[lakeaudit.state.lookup.lake_id].name")
+    labels_inside("located", ["You", nearest])
 
     page.click("#vResult [data-back]")
     if page.get_attribute("#manual", "open") is None:

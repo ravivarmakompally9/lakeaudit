@@ -348,7 +348,8 @@ const panel = $('#panel');
 const sheetH = () => phone() ? panel.offsetHeight : 0;
 const padTL = () => phone() ? [16, 118] : [430, 24];
 const padBR = () => phone() ? [100, sheetH() + 16] : [290, 70];
-const fly = (b, maxZoom = 17) => b && b.isValid() && map.flyToBounds(b, {paddingTopLeft: padTL(), paddingBottomRight: padBR(), maxZoom, duration: .8});
+const fly = (b, maxZoom = 17, pad = {}) => b && b.isValid() &&
+  map.flyToBounds(b, {paddingTopLeft: pad.tl || padTL(), paddingBottomRight: pad.br || padBR(), maxZoom, duration: .8});
 
 const map = L.map('map', {zoomControl: false, minZoom: 4, zoomSnap: .25});
 map.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>');
@@ -688,7 +689,8 @@ function renderResult() {
     <ul class="list">${list}</ul>`;
   const b = L.latLngBounds([[u.lat, u.lon]]).extend(L.latLng(u.lat, u.lon).toBounds(acc * 2));
   if (S.lay[c.lake_id]) b.extend(S.lay[c.lake_id].bounds);
-  fly(b, 17);
+  // phone: the "You" label is centred over the dot and the lake label hangs right; keep both on screen
+  fly(b, 17, phone() ? {tl: [60, 118], br: [160, sheetH() + 16]} : {});
 }
 
 /* ------------------------------------------------------------ manual entry + placer */
