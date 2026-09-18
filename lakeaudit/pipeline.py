@@ -92,9 +92,10 @@ def run_lake(repo_root: Path, lake_id: str, *, offline: bool = False, years: lis
                 log.warning("year %s: no clear scene (%d rejected)", yr, len(rej))
                 continue
             gs, ss = sc.extra.get("green_stats", {}), sc.extra.get("swir_stats", {})
-            log.info("year %s  bands: green n=%s p50=%s  swir n=%s p50=%s  (raster:bands=%s)", yr, gs.get("n_finite"),
-                     None if gs.get("p50") is None else round(gs["p50"], 4), ss.get("n_finite"),
-                     None if ss.get("p50") is None else round(ss["p50"], 4), sc.extra.get("green_raster_bands"))
+            log.info("year %s  bands: green p50=%s  swir p50=%s  | %s", yr,
+                     None if gs.get("p50") is None else round(gs["p50"], 4),
+                     None if ss.get("p50") is None else round(ss["p50"], 4),
+                     (sc.extra.get("offset_handling") or {}).get("green", "no offset in metadata"))
             wr = extract_water(sc, roi_mask, seed_mask, cfg["water"], cfg["boundary"]["simplify_tolerance_m"])
             waters.append(wr)
             log.info("year %s  %s  %s  area=%.2f ac  thr=%.3f (%s)  cloud=%.2f", yr, sc.acquired, sc.scene_id,

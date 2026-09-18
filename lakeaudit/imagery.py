@@ -25,6 +25,10 @@ os.environ.setdefault("GDAL_DISABLE_READDIR_ON_OPEN", "EMPTY_DIR")
 os.environ.setdefault("GDAL_HTTP_MULTIPLEX", "YES")
 os.environ.setdefault("VSI_CACHE", "TRUE")
 
+import logging as _logging
+for _n in ("rasterio", "rasterio._env", "rasterio.session", "botocore", "boto3", "urllib3"):
+    _logging.getLogger(_n).setLevel(_logging.WARNING)
+
 
 @dataclass
 class Grid:
@@ -114,16 +118,35 @@ def read_scene(item, grid: Grid, cfg: dict, year: int) -> Scene:
 
     # earth-search L2A COGs are scaled reflectance (0..10000) with an offset for
     # processing baseline >= 04.00. The STAC raster:bands metadata carries it.
-    def _scale(arr, asset):
+    offset_note = {}
+
+    def _scale(arr, asset, name):
+        """DN -> reflectance. The earth-search COGs on sentinel-cogs already have
+        the BOA_ADD_OFFSET removed, while the STAC raster:bands metadata still
+        declares offset=-0.1. Applying it again pushes water reflectance negative
+        and flips MNDWI. So: apply the metadata offset ONLY if doing so leaves the
+        image physically plausible (reflectance is never meaningfully negative)."""
         rb = (asset.extra_fields or {}).get("raster:bands", [{}])
         scale = rb[0].get("scale", 0.0001) if rb else 0.0001
         offset = rb[0].get("offset", 0.0) if rb else 0.0
-        out = arr * scale + offset
-        out[arr == 0] = np.nan  # nodata
+        valid = arr != 0
+        raw = arr * scale
+        if offset:
+            cand = raw + offset
+            neg = float((cand[valid] < -0.005).mean()) if valid.any() else 0.0
+            if neg > 0.05:
+                offset_note[name] = f"metadata offset {offset} NOT applied ({neg:.0%} px would go negative — COG already offset-corrected)"
+                out = raw
+            else:
+                offset_note[name] = f"metadata offset {offset} applied"
+                out = cand
+        else:
+            out = raw
+        out[~valid] = np.nan  # nodata
         return out
 
-    green = _scale(green, assets[cfg["green_band"]])
-    swir = _scale(swir, assets[cfg["swir_band"]])
+    green = _scale(green, assets[cfg["green_band"]], "green")
+    swir = _scale(swir, assets[cfg["swir_band"]], "swir")
 
     def _stats(a):
         v = a[np.isfinite(a)]
@@ -140,7 +163,7 @@ def read_scene(item, grid: Grid, cfg: dict, year: int) -> Scene:
         extra={"platform": item.properties.get("platform"), "mgrs": item.properties.get("s2:mgrs_tile") or item.properties.get("grid:code"),
                "green_href": g_href, "swir_href": s_href,
                "green_raster_bands": (assets[cfg["green_band"]].extra_fields or {}).get("raster:bands"),
-               "green_stats": _stats(green), "swir_stats": _stats(swir)},
+               "green_stats": _stats(green), "swir_stats": _stats(swir), "offset_handling": offset_note},
     )
 
 

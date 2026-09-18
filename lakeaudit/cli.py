@@ -124,6 +124,7 @@ def cmd_debug(a):
     roi_mask = rasterize_roi(roi, grid); seed_mask = rasterize_roi(lake.seed_polygon, grid)
     idx = mndwi(sc.green, sc.swir)
     print("green href :", sc.extra["green_href"]); print("raster:bands:", sc.extra["green_raster_bands"])
+    print("offset     :", sc.extra.get("offset_handling"))
     for name, arr in (("green", sc.green), ("swir", sc.swir), ("mndwi", idx)):
         v = arr[roi_mask & np.isfinite(arr)]; sv = arr[seed_mask & np.isfinite(arr)]
         print(f"{name:6s} ROI n={v.size:6d} p5={np.percentile(v,5) if v.size else float('nan'):.4f} p50={np.median(v) if v.size else float('nan'):.4f} p95={np.percentile(v,95) if v.size else float('nan'):.4f}"
