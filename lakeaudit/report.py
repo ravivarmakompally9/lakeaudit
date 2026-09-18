@@ -32,7 +32,7 @@ def render_preview(out_dir: Path, title: str, source: str) -> Path:
     w = json.loads((out_dir / "water_by_year.geojson").read_text())["features"]
     s = json.loads((out_dir / "structures.geojson").read_text())["features"]
 
-    fig, ax = plt.subplots(figsize=(9, 8), dpi=110)
+    fig, ax = plt.subplots(figsize=(11.5, 8), dpi=110)
     for f in b:
         if f["properties"].get("layer") == "buffer_ring":
             _plot_geom(ax, shape(f["geometry"]), color="#e0b96a", alpha=0.55, lw=0)
@@ -58,6 +58,7 @@ def render_preview(out_dir: Path, title: str, source: str) -> Path:
     ax.set_title(f"{title}\n{'SYNTHETIC SAMPLE DATA — not a result' if source == 'sample' else 'Sentinel-2 L2A, post-monsoon, MNDWI/Otsu'}",
                  fontsize=11, loc="left")
     ax.set_xlabel("lon"); ax.set_ylabel("lat")
+    ax.ticklabel_format(useOffset=False, style="plain")  # plain degrees, not "0.004 + 1.75e1"
     handles = [Line2D([0], [0], color="#a8123a", lw=2.2, label="max observed extent (one witness, not the FTL)"),
                Patch(color="#e0b96a", alpha=0.55, label="statutory buffer ring"),
                Patch(color=cmap(0.4), alpha=0.5, label=f"water, {years[0] if years else '?'}"),
@@ -65,10 +66,11 @@ def render_preview(out_dir: Path, title: str, source: str) -> Path:
                Patch(color=zcol["inside_extent"], label="building inside extent"),
                Patch(color=zcol["in_buffer"], label="building in buffer"),
                Patch(color=zcol["outside"], label="building outside")]
-    ax.legend(handles=handles, loc="lower left", fontsize=8, frameon=True)
+    # outside the axes: inside, it covered Hussain Sagar's southern tip and red line
+    ax.legend(handles=handles, loc="upper left", bbox_to_anchor=(1.02, 1), borderaxespad=0, fontsize=8, frameon=True)
     ax.grid(alpha=0.2)
     p = out_dir / "preview.png"
-    fig.tight_layout(); fig.savefig(p); plt.close(fig)
+    fig.savefig(p, bbox_inches="tight"); plt.close(fig)
     return p
 
 
