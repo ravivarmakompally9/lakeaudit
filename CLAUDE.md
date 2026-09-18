@@ -23,7 +23,8 @@ rate and an abstention threshold, built on a reproducible reconstruction pipelin
   measured geometric relationship to a boundary, with that boundary's source and date.
 - Every output row carries `run_id`, `code_commit`, `params_hash`, scene ids. Never remove that.
 - The API abstains when GPS accuracy > distance to boundary. Never remove that.
-- Synthetic (`--offline`) output is stamped SYNTHETIC and is never presented as a result.
+- Synthetic (`--offline`) output is stamped SYNTHETIC and is never presented as a result (API `/lookup`
+  adds `synthetic: true` and prefixes the plain-language verdict).
 
 ## Second review is TOMORROW (Sept 19, 2026). Goal: demo ~35% working.
 
@@ -43,7 +44,7 @@ What must work on the laptop tonight, in order:
 4. `python -m lakeaudit serve` → http://localhost:8000 — show abstention (accuracy 40 → refuses; 5 → verdict).
 5. `python -m lakeaudit gates --csv sample_data/ftl_vertices_clean.csv --perimeter 1858.4` (PASS) and
    `..._ocr_dropped_digit.csv` (FAIL gate 1).
-6. `python -m pytest -q tests` → 10 passed.
+6. `python -m pytest -q tests` → 10 passed (pytest now in requirements.txt).
 7. `python -m lakeaudit run --lake alwal_cheruvu --offline` as the no-WiFi backup.
 Full script + Q&A: `REVIEW_DEMO.md`. Status table: `README.md`.
 

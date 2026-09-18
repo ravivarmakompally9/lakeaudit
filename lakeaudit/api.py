@@ -100,10 +100,13 @@ def lookup(lat: float = Query(...), lon: float = Query(...), accuracy_m: float =
         return {**base, "abstain": True, "verdict": None,
                 "reason": f"Your position is uncertain to ±{accuracy_m:.0f} m but only {best['d_edge']:.0f} m from the boundary line. "
                           f"We cannot tell which side you are on, so we will not guess."}
-    return {**base, "abstain": False, "verdict": zone,
-            "plain": {"inside_extent": "Inside the maximum observed water extent.",
-                      "in_buffer": f"Outside the extent but within the {v['buffer_width_m']:.0f} m buffer ring.",
-                      "outside": "Outside both the extent and the buffer ring."}[zone]}
+    plain = {"inside_extent": "Inside the maximum observed water extent.",
+             "in_buffer": f"Outside the extent but within the {v['buffer_width_m']:.0f} m buffer ring.",
+             "outside": "Outside both the extent and the buffer ring."}[zone]
+    if run["data_source"] == "sample":  # --offline output: stamped, never presented as a result
+        base["synthetic"] = True
+        plain = "[SYNTHETIC SAMPLE DATA — not a result] " + plain
+    return {**base, "abstain": False, "verdict": zone, "plain": plain}
 
 
 _DEMO = """<!doctype html><meta charset=utf-8><title>lakeaudit lookup</title>
