@@ -687,10 +687,17 @@ function renderResult() {
     ${provHTML({...lk.provenance}, `<p>Boundary: ${esc(lk.boundary_is)}.</p><p>${esc(lk.disclaimer)}</p>`)}
     <h3 class="h2">All processed lakes, nearest edge first</h3>
     <ul class="list">${list}</ul>`;
-  const b = L.latLngBounds([[u.lat, u.lon]]).extend(L.latLng(u.lat, u.lon).toBounds(acc * 2));
-  if (S.lay[c.lake_id]) b.extend(S.lay[c.lake_id].bounds);
-  // phone: the "You" label is centred over the dot and the lake label hangs right; keep both on screen
-  fly(b, 17, phone() ? {tl: [60, 118], br: [160, sheetH() + 16]} : {});
+  const pt = L.latLng(u.lat, u.lon);
+  if (d <= 300) {
+    // near the line the answer is about metres: show the point, its uncertainty circle, the line and the ring
+    const r = Math.max(3 * d, 3 * acc, 3 * (lk.buffer_width_m || 0), 90);
+    fly(pt.toBounds(2 * r), 18, phone() ? {tl: [40, 118], br: [40, sheetH() + 16]} : {});
+  } else {
+    const b = L.latLngBounds([pt]).extend(pt.toBounds(acc * 2));
+    if (S.lay[c.lake_id]) b.extend(S.lay[c.lake_id].bounds);
+    // phone: the "You" label is centred over the dot and the lake label hangs right; keep both on screen
+    fly(b, 17, phone() ? {tl: [60, 118], br: [160, sheetH() + 16]} : {});
+  }
 }
 
 /* ------------------------------------------------------------ manual entry + placer */

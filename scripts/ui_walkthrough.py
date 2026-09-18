@@ -41,7 +41,13 @@ def walk(p, base: str, out: Path, name: str, opts: dict) -> list[str]:
 
     def shot(tag: str):
         nonlocal n
-        page.wait_for_timeout(1600)                     # flyTo animation + tiles
+        page.wait_for_timeout(1600)                     # flyTo animation
+        try:                                            # then every basemap tile at the new zoom
+            page.wait_for_function("() => [...document.querySelectorAll('.leaflet-tile-container img')]"
+                                   ".every(i => i.classList.contains('leaflet-tile-loaded'))", timeout=15000)
+        except Exception:
+            print(f"  (tiles still loading after 15 s for {tag}; screenshot taken anyway)")
+        page.wait_for_timeout(400)
         n += 1
         path = out / f"{name}-{n:02d}-{tag}.png"
         page.screenshot(path=str(path))
@@ -89,6 +95,7 @@ def walk(p, base: str, out: Path, name: str, opts: dict) -> list[str]:
     shot("located")
     nearest = page.evaluate("lakeaudit.state.byId[lakeaudit.state.lookup.lake_id].name")
     labels_inside("located", ["You", nearest])
+    check(page.evaluate("lakeaudit.map.getZoom()") < 16, "located (1.48 km away): map should show you and the whole lake")
 
     page.click("#vResult [data-back]")
     if page.get_attribute("#manual", "open") is None:
@@ -101,6 +108,8 @@ def walk(p, base: str, out: Path, name: str, opts: dict) -> list[str]:
     check("±40 m" in page.inner_text("#resBody .card.refusal"), "manual 40 m: refusal reason missing")
     check(page.locator('[data-res="retry"]').count() == 1 and page.locator('[data-res="place"]').count() == 1, "manual 40 m: refusal buttons missing")
     shot("manual-40m-refusal")
+    check(page.evaluate("lakeaudit.map.getZoom()") >= 16, "manual 40 m (20 m from line): map should zoom in to the line")
+    labels_inside("manual 40 m", ["Point"])
 
     page.click("#vResult [data-back]")
     page.fill("#inAcc", "5")
@@ -108,6 +117,8 @@ def walk(p, base: str, out: Path, name: str, opts: dict) -> list[str]:
     page.wait_for_selector("#resBody .card.verdict", timeout=20000)
     check(page.locator("#resBody .card.verdict.z-in_buffer").count() == 1, "manual 5 m: expected in_buffer verdict")
     shot("manual-5m-verdict")
+    check(page.evaluate("lakeaudit.map.getZoom()") >= 16, "manual 5 m (20 m from line): map should zoom in to the line")
+    labels_inside("manual 5 m", ["Point"])
 
     if name == "phone":
         page.click("#layersToggle")
