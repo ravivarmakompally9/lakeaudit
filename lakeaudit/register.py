@@ -10,8 +10,8 @@ from pathlib import Path
 
 import requests
 import yaml
-from shapely.geometry import Point, Polygon, MultiPolygon, shape
-from shapely.ops import unary_union
+from shapely.geometry import LineString, Point, Polygon, MultiPolygon, shape
+from shapely.ops import linemerge, polygonize, unary_union
 
 from .geo import utm_crs_for, to_utm, to_wgs, area_m2
 
@@ -84,20 +84,28 @@ def _osm_elements_to_polys(elements: list[dict]) -> list[tuple[int, str, Polygon
                 if poly.is_valid and poly.area > 0:
                     out.append((el["id"], name, poly))
         elif el["type"] == "relation" and "members" in el:
-            outers = []
-            for m in el["members"]:
-                if m.get("role") == "outer" and "geometry" in m:
-                    pts = [(g["lon"], g["lat"]) for g in m["geometry"]]
-                    if len(pts) >= 3:
-                        outers.append(pts)
-            if outers:
-                try:
-                    poly = unary_union([Polygon(o) for o in outers if Polygon(o).is_valid])
-                    if not poly.is_empty:
-                        out.append((el["id"], name, poly))
-                except Exception:
-                    pass
+            # A multipolygon's outer ring is often split across several OPEN ways.
+            # Closing each way on its own draws a chord and truncates the lake
+            # (Hussain Sagar: 242 ha instead of 454 ha). Stitch ways into rings first.
+            try:
+                poly = _rings(el["members"], "outer")
+                if poly is not None and not poly.is_empty:
+                    inner = _rings(el["members"], "inner")
+                    if inner is not None and not inner.is_empty:
+                        poly = poly.difference(inner)
+                    out.append((el["id"], name, poly))
+            except Exception:
+                pass
     return out
+
+
+def _rings(members: list[dict], role: str):
+    lines = [LineString([(g["lon"], g["lat"]) for g in m["geometry"]])
+             for m in members if m.get("role") == role and len(m.get("geometry", [])) >= 2]
+    if not lines:
+        return None
+    polys = [p for p in polygonize(linemerge(lines)) if p.is_valid and p.area > 0]
+    return unary_union(polys) if polys else None
 
 
 def resolve_seed(lake: Lake, overpass_url: str, timeout: int = 90) -> Lake:
