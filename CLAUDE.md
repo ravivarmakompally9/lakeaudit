@@ -121,6 +121,7 @@ Don't rebuild things that work. If a lake's outline lands on the wrong water bod
 - Overpass rate-limits: if `fetch_osm_buildings` fails, the run still completes with zero structures and
   logs a warning — rerun after a minute.
 - `seed_verified: false` lakes: OSM name regex may match the wrong water body; check `preview.png`.
-- Years with no clear post-monsoon scene are recorded as "insufficient data" — that is correct behaviour,
-  not a bug. The chart marks them.
+- Years with no clear post-monsoon scene are recorded as "insufficient data" (`summary.years_insufficient`)
+  — that is correct behaviour, not a bug. A clear scene where nothing at the seed reads as water is a
+  different case: "no open water detected" (`summary.years_no_open_water`). The chart marks both, differently.
 - Two large `lakeaudit*` folders exist in `~/Downloads` from repeated unzips; work in the newest (v3).

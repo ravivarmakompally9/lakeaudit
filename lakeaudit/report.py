@@ -14,6 +14,7 @@ from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
 
 from .geo import m2_to_acres
+from .water import NO_SCENE_METHODS
 
 
 def _plot_geom(ax, geom, **kw):
@@ -81,9 +82,13 @@ def render_area_chart(out_dir: Path, title: str, source: str) -> Path:
     missing = [r for r in all_rows if r["area_m2"] in ("", "0", "0.0")]
     fig, ax = plt.subplots(figsize=(8, 3.6), dpi=110)
     for r in missing:
-        ax.axvline(int(r["year"]), color="#a8123a", lw=1, ls="--", alpha=.6)
-        ax.annotate(f"{r['year']}: insufficient data\n({r['threshold_method']})", (int(r["year"]), 0.5), xycoords=("data", "axes fraction"),
-                    ha="center", fontsize=7.5, color="#a8123a", rotation=90, va="center")
+        if r["threshold_method"] in NO_SCENE_METHODS:   # no usable scene: we can't say anything about this year
+            col, ls, label = "#a8123a", "--", f"{r['year']}: insufficient data\n({r['threshold_method']})"
+        else:                                           # clear scene, nothing at the seed reads as water
+            col, ls, label = "#6b5a3e", ":", f"{r['year']}: no open water detected\n(clear scene, lakebed reads as land)"
+        ax.axvline(int(r["year"]), color=col, lw=1, ls=ls, alpha=.6)
+        ax.annotate(label, (int(r["year"]), 0.5), xycoords=("data", "axes fraction"),
+                    ha="center", fontsize=7.5, color=col, rotation=90, va="center")
     if rows:
         ys = [int(r["year"]) for r in rows]
         ac = [m2_to_acres(float(r["area_m2"])) for r in rows]

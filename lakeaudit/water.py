@@ -19,13 +19,18 @@ from .imagery import Scene, Grid
 from .geo import to_wgs, area_m2
 
 
+# threshold_method values set by the pipeline when no usable scene exists for a year
+# (-> "insufficient data"), as opposed to a clear scene with no open water at the seed.
+NO_SCENE_METHODS = ("rejected_cloud", "no_clear_scene")
+
+
 @dataclass
 class WaterResult:
     year: int
     scene_id: str
     acquired: str
     threshold: float
-    threshold_method: str          # "otsu_roi" | "fallback_fixed"
+    threshold_method: str          # "otsu_roi" | "fallback_fixed" | "otsu_clamped_floor" | one of NO_SCENE_METHODS
     polygon_wgs: Polygon | MultiPolygon | None
     area_m2: float
     roi_cloud_fraction: float

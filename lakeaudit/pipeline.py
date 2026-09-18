@@ -13,7 +13,7 @@ from shapely.geometry import shape
 from .provenance import new_run
 from .register import load_register, resolve_seed, Lake
 from .imagery import make_grid, best_scene_for_year
-from .water import rasterize_roi, extract_water, WaterResult
+from .water import rasterize_roi, extract_water, WaterResult, NO_SCENE_METHODS
 from .boundary import max_observed_extent
 from .structures import fetch_osm_buildings, classify, zone_summary
 from .store import write_outputs
@@ -120,10 +120,14 @@ def run_lake(repo_root: Path, lake_id: str, *, offline: bool = False, years: lis
 
     # ---------------------------------------------------------------- 5. store + report
     good_years = [w.year for w in waters if w.polygon_wgs is not None]
+    # Two different absences: no usable scene (cloud) vs a clear scene where nothing
+    # touching the seed reads as water (lakebed reads as land). Don't conflate them.
+    no_scene = [w.year for w in waters if w.polygon_wgs is None and w.threshold_method in NO_SCENE_METHODS]
     summary = {
         "years_requested": years,
         "years_with_data": good_years,
-        "years_insufficient": [w.year for w in waters if w.polygon_wgs is None],
+        "years_insufficient": no_scene,
+        "years_no_open_water": [w.year for w in waters if w.polygon_wgs is None and w.year not in no_scene],
         "boundary": boundary.summary() if boundary else None,
         "structures": zone_summary(structs) if structs else None,
         "elapsed_s": round(time.time() - t0, 1),
