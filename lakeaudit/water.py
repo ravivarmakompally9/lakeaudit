@@ -48,7 +48,8 @@ def rasterize_roi(poly_wgs, grid: Grid) -> np.ndarray:
     ).astype(bool)
 
 
-def choose_threshold(idx: np.ndarray, roi_mask: np.ndarray, fallback: float) -> tuple[float, str, str]:
+def choose_threshold(idx: np.ndarray, roi_mask: np.ndarray, fallback: float,
+                     floor: float | None = None) -> tuple[float, str, str]:
     vals = idx[roi_mask & np.isfinite(idx)]
     if vals.size < 50:
         return fallback, "fallback_fixed", "too few valid pixels in ROI"
@@ -61,6 +62,10 @@ def choose_threshold(idx: np.ndarray, roi_mask: np.ndarray, fallback: float) -> 
     frac = float((vals > t).mean())
     if frac < 0.005 or frac > 0.995:
         return fallback, "fallback_fixed", f"otsu degenerate (water frac {frac:.3f})"
+    # Physical floor: when water is a sliver of a mostly-land ROI, Otsu splits
+    # land from land (Nalla Cheruvu: -0.31) and floods whole neighbourhoods.
+    if floor is not None and t < floor:
+        return floor, "otsu_clamped_floor", f"otsu {t:.3f} below physical floor {floor}"
     return t, "otsu_roi", ""
 
 
@@ -91,6 +96,10 @@ def water_mask(idx: np.ndarray, threshold: float, roi_mask: np.ndarray, scl: np.
             keep_ids = np.unique(lab[seed_mask])
             keep_ids = keep_ids[keep_ids > 0]
             m = np.isin(lab, keep_ids)
+        elif seed_mask is not None and seed_mask.any():
+            # nothing touches the lake: report no water rather than grabbing the
+            # largest blob elsewhere in the ROI, which may be a different lake
+            m = np.zeros_like(m)
         else:
             ids, counts = np.unique(lab[lab > 0], return_counts=True)
             m = lab == ids[np.argmax(counts)]
@@ -111,7 +120,7 @@ def mask_to_polygon(mask: np.ndarray, grid: Grid, simplify_m: float = 0.0):
 def extract_water(scene: Scene, roi_mask: np.ndarray, seed_mask: np.ndarray | None, cfg: dict,
                   simplify_m: float = 0.0) -> WaterResult:
     idx = mndwi(scene.green, scene.swir)
-    t, method, note = choose_threshold(idx, roi_mask, cfg["otsu_fallback_threshold"])
+    t, method, note = choose_threshold(idx, roi_mask, cfg["otsu_fallback_threshold"], cfg.get("min_water_threshold"))
     if seed_mask is not None and seed_mask.any():
         sv = idx[seed_mask & np.isfinite(idx)]
         gv = scene.green[seed_mask & np.isfinite(scene.green)]
@@ -124,6 +133,8 @@ def extract_water(scene: Scene, roi_mask: np.ndarray, seed_mask: np.ndarray | No
         seed_mask, cfg["keep_largest_component_only"],
     )
     poly = mask_to_polygon(m, scene.grid, simplify_m)
+    if poly is None:
+        note = ("no open water above threshold touching the seed polygon (dry, weed-covered, or wrong seed) | " + note).strip(" |")
     return WaterResult(
         year=scene.year, scene_id=scene.scene_id, acquired=scene.acquired,
         threshold=round(t, 4), threshold_method=method, polygon_wgs=poly,

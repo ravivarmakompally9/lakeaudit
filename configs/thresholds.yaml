@@ -21,6 +21,7 @@ water:
   # must be bimodal, which fails when water is < ~1% of the tile.
   threshold_method: otsu_roi
   otsu_fallback_threshold: 0.0          # used only if Otsu fails (unimodal ROI)
+  min_water_threshold: 0.0              # physical floor (Xu 2006: water is MNDWI > 0); Otsu below it is clamped and labelled
   min_water_patch_px: 12                # drop speckle smaller than this
   keep_largest_component_only: true     # the lake, not roadside puddles
   scl_cloud_classes: [3, 8, 9, 10]      # S2 scene classification: shadow, cloud med/high, cirrus
