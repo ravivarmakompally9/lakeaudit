@@ -352,7 +352,12 @@ const panel = $('#panel');
 const sheetH = () => phone() ? panel.offsetHeight : 0;
 const PAD = () => phone() ? {tl: [40, 80], br: [40, sheetH() + 16]} : {tl: [424, 40], br: [268, 70]};
 function fly(b, maxZoom = 17, pad = PAD()) {
-  if (b && b.isValid()) map.flyToBounds(b, {paddingTopLeft: pad.tl, paddingBottomRight: pad.br, maxZoom, duration: .7});
+  const s = map.getSize();
+  // a map caught at 0×0 mid-resize makes flyTo's first (synchronous) frame throw "Invalid LatLng (NaN, NaN)"
+  if (!b || !b.isValid() || !s.x || !s.y) return;
+  const o = {paddingTopLeft: pad.tl, paddingBottomRight: pad.br, maxZoom};
+  try { map.flyToBounds(b, {...o, duration: .7}); }
+  catch (e) { try { map.stop(); map.fitBounds(b, {...o, animate: false}); } catch (_) { /* leave the view as it is */ } }
 }
 
 const map = L.map('map', {zoomControl: false, zoomSnap: .25, minZoom: 4});
@@ -805,7 +810,7 @@ async function boot() {
     .catch(err => console.warn(`lake ${c.lake_id}: ${err.message}`))));
   document.body.dataset.ready = '1';
 }
-window.lakeaudit = {state: S, map, groups: G, base: BASE, declutter};
+window.lakeaudit = {state: S, map, groups: G, base: BASE, declutter, fly};
 boot();
 })();
 </script>

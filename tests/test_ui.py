@@ -614,3 +614,17 @@ def test_every_control_is_at_least_44px_and_nothing_scrolls_sideways(app, server
     page.wait_for_selector("#answer")
     page.click("#result details.prov summary")
     check("result")
+
+
+def test_map_fly_survives_a_zero_size_map(app):
+    """A resize or phone rotation can catch the map at 0x0; flyTo's first frame then throws
+    "Invalid LatLng (NaN, NaN)", which used to surface as "Could not reach the service"."""
+    page = app()
+    bounds = "L.latLngBounds([17.42, 78.46], [17.44, 78.48])"
+    page.evaluate("() => { const m = document.getElementById('map'); m.style.width = m.style.height = '0px'; lakeaudit.map.invalidateSize(); }")
+    assert "Invalid LatLng" in page.evaluate(f"""() => {{ try {{ lakeaudit.map.flyToBounds({bounds}, {{duration: .1}});
+        return 'no error'; }} catch (e) {{ return String(e); }} }}""")                  # the bug, unguarded
+    page.evaluate("lakeaudit.map.stop()")
+    page.evaluate(f"lakeaudit.fly({bounds})")                                          # guarded: must not throw
+    c, z = page.evaluate("[lakeaudit.map.getCenter(), lakeaudit.map.getZoom()]")
+    assert all(math.isfinite(v) for v in (c["lat"], c["lng"], z))
