@@ -772,7 +772,8 @@ function renderResult() {
     <div id="answerSlot">${answerHTML(lk)}</div>
     <div id="statsSlot">${statsHTML(lk, u)}</div>
     ${whatIfHTML(lk)}
-    <div class="stack"><button type="button" class="btn block" data-act="open-lake" data-lake="${esc(c.lake_id)}">View lake</button></div>
+    <div class="stack"><button type="button" class="btn block" data-act="open-lake" data-lake="${esc(c.lake_id)}">View lake</button>
+      <button type="button" class="btn block" data-act="report">Download report</button></div>
     ${provHTML(lk.provenance, lk.provenance.data_source)}`);
   const pt = L.latLng(u.lat, u.lon);
   if (d <= 300) {   // near the line the answer is about metres: show point, circle, line and ring
@@ -788,6 +789,10 @@ $('#result').addEventListener('input', e => { if (e.target.id === 'accRange') on
 $('#result').addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   if (b.dataset.act === 'open-lake') return openLake(b.dataset.lake);
+  if (b.dataset.act === 'report') {   // same point, accuracy and lake as this answer; /report reuses /lookup
+    const q = new URLSearchParams({lat: S.user.lat, lon: S.user.lon, accuracy_m: S.lookup.reported_gps_accuracy_m, lake_id: S.lookup.lake_id});
+    return window.open(`/report?${q}`, '_blank', 'noopener');
+  }
   if (b.dataset.act === 'retry') {
     if (S.user && S.user.source === 'manual') { show('vHome'); $('#manual').open = true; return $('#inAcc').focus(); }
     return locate(S.target);

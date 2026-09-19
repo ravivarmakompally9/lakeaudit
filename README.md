@@ -110,6 +110,7 @@ a collapsed *Data source* (run, commit, params). Synthetic lakes are hidden when
 | `GET /lake/{id}` | the card + `run.json` + boundary, water-by-year and structures GeoJSON |
 | `GET /nearby?lat&lon` | every lake by distance (m, UTM) from the point to its observed-extent edge, with `point_zone` |
 | `GET /lookup?lat&lon&accuracy_m[&lake_id]` | verdict or abstention; `lake_id` judges against that lake instead of the nearest |
+| `GET /report?lat&lon&accuracy_m[&lake_id]` | the same answer or refusal as `/lookup` (it calls it) as a printable one-page A4 report: the point, the satellite scenes behind the line, run/commit/params, what the line is and is not |
 
 Screenshots for the deck (server running): `python scripts/screenshots.py` → `docs/screenshots/`.
 

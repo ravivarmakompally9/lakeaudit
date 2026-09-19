@@ -599,6 +599,56 @@ def test_check_button_answers_near_the_line_and_refuses_when_too_uncertain(app, 
     assert page.is_visible("#vHome") and page.get_attribute("#manual", "open") is not None
 
 
+def _open_report(page):
+    with page.context.expect_page() as info:
+        page.click('#result [data-act="report"]')
+    rep = info.value
+    errors: list[str] = []
+    rep.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+    rep.on("pageerror", lambda e: errors.append(str(e)))
+    rep.wait_for_load_state()
+    return rep, errors
+
+
+@SIZES
+def test_download_report_opens_the_same_answer_or_refusal_in_a_new_tab(app, server, size):
+    lat, lon = north_of(card(server, "hussain_sagar"), 15)
+    d = nearby(server, lat, lon, "hussain_sagar")["distance_to_extent_line_m"]
+    page = app(size)
+    enter(page, lat, lon, max(1, round(d / 3)))
+    page.wait_for_selector("#answer")
+    verdict = page.inner_text("#answer h2")
+    rep, errors = _open_report(page)
+    assert "/report?" in rep.url and "lake_id=hussain_sagar" in rep.url and "accuracy_m=" in rep.url
+    t = rep.inner_text("body")
+    assert verdict in t and "Hussain Sagar" in t and "Cannot answer" not in t
+    assert "NOT the notified FTL and NOT a legal determination" in t and "shortlist for human inspection" in t
+    assert rep.eval_on_selector("button.print", "b => b.getBoundingClientRect().height") >= 43.5
+    assert rep.evaluate("document.documentElement.scrollWidth - innerWidth") <= 0
+    rep.evaluate("window.print = () => { window.__printed = true }")
+    rep.click("button.print")
+    assert rep.evaluate("window.__printed === true")
+    assert not errors, errors
+    rep.close()
+    page.click("#vResult [data-back]")
+    enter(page, lat, lon, round(d + 10))                                     # too uncertain: the report refuses too
+    page.wait_for_selector('#answer[data-state="refused"]')
+    rep, errors = _open_report(page)
+    t = rep.inner_text("body")
+    assert "Cannot answer" in t and "we will not guess" in t and verdict not in t
+    assert not errors, errors
+
+    rep.close()                                                               # the slider's answer is the report's answer
+    page.click("#vResult [data-back]")
+    enter(page, lat, lon, max(1, round(d / 3)))
+    page.wait_for_selector(f'#answer:not([data-state="refused"])')
+    page.locator("#accRange").fill(str(math.ceil(d) + 5))
+    page.wait_for_selector('#answer[data-state="refused"]')
+    rep, errors = _open_report(page)
+    assert f"accuracy_m={math.ceil(d) + 5}" in rep.url and "Cannot answer" in rep.inner_text("body")
+    assert not errors, errors
+
+
 @SIZES
 def test_pick_on_map_fills_the_form_and_can_be_cancelled(app, size):
     page = app(size)

@@ -11,11 +11,12 @@ commit that produced the boundary it was judged against."""
 from __future__ import annotations
 
 import csv
+import html
 import io
 import json
 import math
 import socket
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import yaml
@@ -278,7 +279,107 @@ def lookup(lat: float = Query(..., **_LAT), lon: float = Query(..., **_LON),
     return {**base, "abstain": False, "verdict": zone, "plain": plain}
 
 
-_DEMO = """<!doctype html><meta charset=utf-8><title>lakeaudit lookup</title>
+_ZONE = {"inside_extent": "Inside the observed extent", "in_buffer": "In the buffer ring",
+         "outside": "Outside the extent and buffer"}
+_LINE_IS = ("The line is the maximum post-monsoon water extent observed by Sentinel-2 since 2019. It is one witness "
+            "to the FTL — NOT the notified FTL and NOT a legal determination.")
+_IST = timezone(timedelta(hours=5, minutes=30))
+_REPORT_CSS = """
+:root{color-scheme:light;--ink:#0e1b1d;--muted:#5a6a6c;--line:#dde3e1;--red:#a8123a;--ochre:#956426;--green:#2f6b4f}
+*{box-sizing:border-box}
+html,body{margin:0;background:#fff;color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+main{max-width:180mm;margin:0 auto;padding:24px 16px 32px}
+h1{font-size:20px;line-height:1.25;margin:0 0 2px}
+h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px}
+.sub{color:var(--muted);margin:0}
+.syn{margin:12px 0 0;padding:8px 12px;border-radius:6px;background:var(--red);color:#fff;font-weight:600}
+.answer{margin-top:14px;padding:12px 14px;border:1px solid var(--line);border-left:5px solid var(--c);border-radius:8px}
+.answer b{display:block;font-size:17px;color:var(--c)}
+.answer p{margin:2px 0 0}
+.c-outside{--c:var(--green)} .c-in_buffer{--c:var(--ochre)} .c-inside_extent,.c-refused{--c:var(--red)}
+dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0}
+dt{color:var(--muted)} dd{margin:0;overflow-wrap:anywhere}
+.mono,td{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px}
+table{border-collapse:collapse;width:100%}
+th{text-align:left;font-weight:600;font-size:12px;color:var(--muted)}
+th,td{padding:4px 8px 4px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.note{color:var(--muted);font-size:12.5px;margin:6px 0 0}
+.fine{margin-top:18px;padding-top:10px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+.fine p{margin:0 0 4px}
+.print{min-height:44px;padding:0 16px;margin-top:18px;border:1px solid var(--line);border-radius:8px;background:#fff;font:inherit;font-weight:500;cursor:pointer}
+@page{size:A4;margin:14mm}
+@media print{main{padding:0;max-width:none}.print{display:none}
+  .answer,.syn{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+"""
+
+
+def _report_html(lk: dict, lat: float, lon: float, accuracy_m: float) -> str:
+    e = html.escape
+    now = datetime.now(timezone.utc)
+    card = _STATE["lakes"][lk["lake_id"]]["card"] if lk.get("lake_id") in _STATE["lakes"] else None
+    name = card["name"] if card else lk.get("lake_name")
+    synthetic = bool(lk.get("synthetic")) or bool(card and card["synthetic"])
+    if lk["abstain"]:
+        answer = f'<div class="answer c-refused"><b>Cannot answer</b><p>{e(lk["reason"])}</p></div>'
+    else:
+        answer = (f'<div class="answer c-{e(lk["verdict"])}"><b>{e(_ZONE[lk["verdict"]])}</b>'
+                  f'<p>{e(lk["plain"])}</p></div>')
+    where = [("Lake", name or "—"), ("District", (card or {}).get("district") or "—"),
+             ("Point", f"{lat:.6f}, {lon:.6f} (WGS84)"), ("GPS accuracy", f"±{accuracy_m:g} m (95 % radius)")]
+    if "distance_to_extent_line_m" in lk:
+        where += [("Distance to the line", f"{lk['distance_to_extent_line_m']:g} m"),
+                  ("Buffer width", "—" if lk.get("buffer_width_m") is None else f"{lk['buffer_width_m']:g} m")]
+    rows, scenes = "", ""
+    if card:
+        used = set(card["provenance"].get("years_used") or [])
+        seen = [r for r in card["area_by_year"] if r["year"] in used and r.get("scene_id")]
+        rows = "".join(f"<tr><td>{r['year']}</td><td>{e(r.get('acquired') or '—')}</td><td>{e(r['scene_id'])}</td></tr>"
+                       for r in seen)
+        listed = {r["scene_id"] for r in seen}
+        rows += "".join(f"<tr><td>—</td><td>—</td><td>{e(s)}</td></tr>"
+                        for s in card["provenance"].get("scene_ids") or [] if s not in listed)
+        scenes = (f'<h2>Satellite scenes behind the line</h2><table><thead><tr><th>Year</th><th>Acquired</th>'
+                  f'<th>Scene id</th></tr></thead><tbody>{rows}</tbody></table>'
+                  f'<p class="note">{"Synthetic sample scenes." if synthetic else "Sentinel-2 L2A, one clearest post-monsoon scene per year."}'
+                  f' Years with no usable scene or no open water are not part of the line.</p>')
+    p = lk.get("provenance") or {}
+    prov = [("Run", p.get("run_id")), ("Code commit", p.get("code_commit")), ("Params hash", p.get("params_hash")),
+            ("Data source", "SYNTHETIC sample" if synthetic else "Sentinel-2 L2A (earth-search STAC)")]
+    dl = lambda pairs, mono=False: "<dl>" + "".join(
+        f'<dt>{e(k)}</dt><dd{" class=mono" if mono else ""}>{e(str(v if v is not None else "—"))}</dd>' for k, v in pairs) + "</dl>"
+    title = f"Screening report · {name or 'no lake'} · {lat:.5f}, {lon:.5f}"
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light">
+<title>{e(title)}</title><link rel="icon" href="{_FAVICON}"><style>{_REPORT_CSS}</style></head><body><main>
+<h1>Lake boundary screening report</h1>
+<p class="sub">lakeaudit · generated {now.astimezone(_IST):%d %b %Y, %H:%M} IST ({now:%Y-%m-%d %H:%M} UTC)</p>
+{'<p class="syn">SYNTHETIC SAMPLE DATA — not a result</p>' if synthetic else ''}
+{answer}
+<h2>Where</h2>{dl(where)}
+{scenes}
+<h2>Provenance</h2>{dl(prov, mono=True)}
+<div class="fine"><p><b>What the line is.</b> {e(_LINE_IS)}</p>
+<p>{e(lk.get("disclaimer") or "Indicative screening only. Generates a shortlist for human inspection. Not authority to act.")}</p>
+<p>Parcel geometry only: no owner identity is recorded or shown.</p></div>
+<button type="button" class="print" onclick="print()">Print or save as PDF</button>
+</main></body></html>"""
+
+
+@app.get("/report", tags=["check"], summary="Printable one-page screening report for a point",
+         response_class=HTMLResponse,
+         description="The /lookup answer for one point — or its refusal and the reason — with the satellite scenes and "
+                     "provenance behind the line, as a printable A4 page. It calls /lookup, so the abstention rule is the same.")
+def report(lat: float = Query(..., **_LAT), lon: float = Query(..., **_LON),
+           accuracy_m: float = Query(..., description="device 95% GPS radius, metres", examples=[5]),
+           lake_id: str | None = Query(None, description="judge against this lake instead of the nearest one", examples=["hussain_sagar"])):
+    lk = lookup(lat=lat, lon=lon, accuracy_m=accuracy_m, lake_id=lake_id)
+    if isinstance(lk, JSONResponse):                 # unknown lake_id: same 404 as /lookup
+        return HTMLResponse(f"<!doctype html><meta charset=utf-8><meta name=color-scheme content=light>"
+                            f"<title>Unknown lake</title><p>Unknown lake '{html.escape(lake_id or '')}'.</p>", status_code=404)
+    return HTMLResponse(_report_html(lk, lat, lon, accuracy_m))
+
+
+_DEMO ="""<!doctype html><meta charset=utf-8><title>lakeaudit lookup</title>
 <meta name=color-scheme content=light><style>:root{color-scheme:light}body{font:15px system-ui;max-width:640px;margin:40px auto;padding:0 16px;background:#fff;color:#111}input{width:100%;padding:8px;margin:4px 0 12px;font-size:15px}button{padding:10px 16px;font-size:15px}pre{background:#f3f5f4;padding:12px;overflow:auto;border-radius:4px}.ab{color:#a8123a;font-weight:600}</style>
 <h2>Where am I relative to the nearest lake boundary?</h2>
 <label>Latitude<input id=lat value="17.4239"></label><label>Longitude<input id=lon value="78.4738"></label>

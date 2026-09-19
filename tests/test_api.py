@@ -163,3 +163,42 @@ def test_connect_gives_a_phone_address_and_its_qr(client, monkeypatch):
     monkeypatch.setattr(api, "_lan_ip", lambda: None)                       # laptop not on any network
     assert client.get("/connect").json()["lan_url"] is None
     assert client.get("/connect/qr.svg").status_code == 503
+
+
+def _report_query(client, lid, accuracy_m):
+    c = _card(client, lid)
+    return c, {"lat": c["centroid"]["lat"], "lon": c["centroid"]["lon"], "accuracy_m": accuracy_m, "lake_id": lid}
+
+
+def test_report_is_the_lookup_answer_with_scenes_and_provenance(client):
+    c, q = _report_query(client, "nalla_cheruvu_kukatpally", 1)
+    lk = client.get("/lookup", params=q).json()
+    r = client.get("/report", params=q)
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
+    t = r.text
+    assert lk["abstain"] is False and lk["verdict"] == "inside_extent"
+    assert "Inside the observed extent" in t and "Cannot answer" not in t
+    assert c["name"] in t and c["district"] in t and f'{q["lat"]:.6f}, {q["lon"]:.6f}' in t and "±1 m" in t
+    assert f'{lk["distance_to_extent_line_m"]:g} m' in t and f'{lk["buffer_width_m"]:g} m' in t
+    for k in ("run_id", "code_commit", "params_hash"):
+        assert lk["provenance"][k] in t
+    assert c["provenance"]["scene_ids"] and all(s in t for s in c["provenance"]["scene_ids"])
+    assert "maximum post-monsoon water extent observed by Sentinel-2 since 2019" in t
+    assert "NOT the notified FTL and NOT a legal determination" in t and "shortlist for human inspection" in t
+    assert "SYNTHETIC SAMPLE DATA — not a result" in t                      # --offline data is stamped here too
+    assert "no owner identity" in t and "UTC" in t and "@page{size:A4" in t and 'content="light"' in t
+    assert "illegal" not in t.lower()
+
+
+def test_report_refuses_exactly_when_lookup_does(client):
+    c, q = _report_query(client, "nalla_cheruvu_kukatpally", 1)
+    d = client.get("/nearby", params={"lat": q["lat"], "lon": q["lon"]}).json()["lakes"]
+    d_edge = next(x for x in d if x["lake_id"] == "nalla_cheruvu_kukatpally")["distance_to_extent_line_m"]
+    q["accuracy_m"] = d_edge + 10
+    lk = client.get("/lookup", params=q).json()
+    t = client.get("/report", params=q).text
+    assert lk["abstain"] is True
+    assert "Cannot answer" in t and lk["reason"] in t
+    assert not any(z in t for z in ("Inside the observed extent", "In the buffer ring", "Outside the extent and buffer"))
+    assert lk["provenance"]["run_id"] in t                                   # a refusal is still traceable
+    assert client.get("/report", params={**q, "lake_id": "nope"}).status_code == 404
