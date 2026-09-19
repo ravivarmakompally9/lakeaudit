@@ -152,6 +152,20 @@ details.manual[open] summary::after{transform:rotate(-135deg)}
 .yr-next .yv{color:var(--muted);font-family:var(--sans);font-size:10.5px}
 .yr-next .yb{background:repeating-linear-gradient(135deg,#eef2f1 0 5px,#f8faf9 5px 10px);border:1px dashed #c9d3d1}
 .label .unit{text-transform:none;letter-spacing:0;font-weight:500;color:#8a9799;margin-left:4px}
+.whatif{margin-top:14px;padding:12px 14px 8px;border:1px solid var(--line);border-radius:12px;background:#fbfcfc}
+.wi-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.wi-h label{font-size:13.5px;font-weight:500}
+.wi-h output{font:600 15px var(--mono)}
+.wi-track{position:relative;margin-top:4px}
+.wi-track input{display:block;width:100%;min-height:44px;margin:0;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer}
+.wi-track input::-webkit-slider-runnable-track{height:8px;border-radius:999px;background:var(--wi-bg)}
+.wi-track input::-moz-range-track{height:8px;border-radius:999px;background:var(--wi-bg)}
+.wi-track input::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;margin-top:-7px;border-radius:50%;background:#fff;border:2px solid var(--ink);box-shadow:var(--shadow-sm)}
+.wi-track input::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#fff;border:2px solid var(--ink)}
+.wi-line{position:absolute;top:11px;bottom:11px;width:3px;margin-left:-1.5px;background:var(--ink);border-radius:2px;pointer-events:none}
+.wi-scale{position:relative;height:16px;font:11px/16px var(--mono);color:var(--muted)}
+.wi-scale span{position:absolute;top:0;white-space:nowrap}
+.wi-scale .at{color:var(--ink);font-weight:500;transform:translateX(-50%)}
 .val{margin-top:10px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fbfcfc}
 .val.pending{border-style:dashed;background:#fff}
 .val-h{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px}
@@ -625,20 +639,57 @@ async function analyze(lat, lon, acc, source, lakeId = null) {
   }
 }
 
+const answerHTML = lk => lk.abstain
+  ? `<div class="card c-refused" id="answer" data-state="refused">${icon('refused')}<h2>Cannot answer</h2><p>${esc(lk.reason)}</p>${retryRow}</div>`
+  : `<div class="card c-${esc(lk.verdict)}" id="answer" data-state="${esc(lk.verdict)}">${icon(lk.verdict)}<h2>${esc(ZONE[lk.verdict])}</h2><p>${esc(lk.plain)}</p></div>`;
+const statsHTML = (lk, u) => `<div class="stats">
+    <div class="stat"><b>±${esc(num(lk.reported_gps_accuracy_m))} m</b><span>${u.source === 'gps' ? 'GPS accuracy' : 'Accuracy entered'}</span></div>
+    <div class="stat"><b>${esc(dist(lk.distance_to_extent_line_m))}</b><span>Distance to the line</span></div></div>`;
+
+/* "watch it refuse": drag the accuracy; the server re-decides, the circle grows, the card flips at the line */
+const WI_MAX = 150, HARD_MAX = 100;
+function whatIfHTML(lk) {
+  const d = lk.distance_to_extent_line_m, acc = Math.min(Math.round(lk.reported_gps_accuracy_m), WI_MAX);
+  const t = Math.min(d, HARD_MAX), at = 100 * t / WI_MAX;                  // answers up to t, refuses beyond
+  const px = (0.5 - at / 100) * 22;                                          // keep the marker under the thumb's centre
+  const label = d <= HARD_MAX ? `line ${dist(d)}` : `${HARD_MAX} m limit`;
+  return `<div class="whatif">
+    <div class="wi-h"><label for="accRange">What if the GPS were less precise?</label><output id="accOut" for="accRange">±${num(acc)} m</output></div>
+    <div class="wi-track"><input type="range" id="accRange" min="1" max="${WI_MAX}" step="1" value="${acc}" aria-describedby="wiNote"
+        style="--wi-bg:linear-gradient(90deg,rgba(47,107,79,.55) 0 ${at.toFixed(1)}%,rgba(168,18,58,.55) ${at.toFixed(1)}% 100%)">
+      <span class="wi-line" style="left:calc(${at.toFixed(1)}% + ${px.toFixed(1)}px)" aria-hidden="true"></span></div>
+    <div class="wi-scale" aria-hidden="true">
+      <span class="at" style="${at < 20 ? 'left:0;transform:none' : `left:${at.toFixed(1)}%`}">${esc(label)}</span><span style="right:0">${WI_MAX} m</span></div>
+    <p class="fine" id="wiNote">Green: the whole circle is on one side of the line, so it answers. Red: the line runs through the circle${d > HARD_MAX ? ' or it is wider than 100 m' : ''}, so it refuses.</p>
+  </div>`;
+}
+let wiSeq = 0, wiTimer = null;
+function onAccuracy(v) {
+  S.user.acc = v;
+  $('#accOut').textContent = `±${num(v)} m`;
+  drawUser();
+  clearTimeout(wiTimer);
+  wiTimer = setTimeout(async () => {
+    const seq = ++wiSeq, u = S.user, id = S.lookup.lake_id;
+    try {
+      const lk = await api(`/lookup?lat=${encodeURIComponent(u.lat)}&lon=${encodeURIComponent(u.lon)}&accuracy_m=${v}&lake_id=${encodeURIComponent(id)}`);
+      if (seq !== wiSeq) return;                                             // a later drag already answered
+      S.lookup = lk;
+      $('#answerSlot').innerHTML = answerHTML(lk);
+      $('#statsSlot').innerHTML = statsHTML(lk, u);
+    } catch (err) { /* keep the last answer on screen */ }
+  }, 120);
+}
+
 function renderResult() {
   const lk = S.lookup, u = S.user, c = S.byId[lk.lake_id];
   const acc = lk.reported_gps_accuracy_m, d = lk.distance_to_extent_line_m;
-  const card = lk.abstain
-    ? `<div class="card c-refused" id="answer" data-state="refused">${icon('refused')}<h2>Cannot answer</h2><p>${esc(lk.reason)}</p>${retryRow}</div>`
-    : `<div class="card c-${esc(lk.verdict)}" id="answer" data-state="${esc(lk.verdict)}">${icon(lk.verdict)}<h2>${esc(ZONE[lk.verdict])}</h2><p>${esc(lk.plain)}</p></div>`;
   setResult(`
     <div class="eyebrow">${S.target ? 'Checked against' : 'Nearest lake'}</div>
     <h1>${esc(c.name)}${c.synthetic ? '<span class="tag">SYNTHETIC</span>' : ''}</h1>
-    ${card}
-    <div class="stats">
-      <div class="stat"><b>±${esc(num(acc))} m</b><span>${u.source === 'gps' ? 'GPS accuracy' : 'Accuracy entered'}</span></div>
-      <div class="stat"><b>${esc(dist(d))}</b><span>Distance to the line</span></div>
-    </div>
+    <div id="answerSlot">${answerHTML(lk)}</div>
+    <div id="statsSlot">${statsHTML(lk, u)}</div>
+    ${whatIfHTML(lk)}
     <div class="stack"><button type="button" class="btn block" data-act="open-lake" data-lake="${esc(c.lake_id)}">View lake</button></div>
     ${provHTML(lk.provenance, lk.provenance.data_source)}`);
   const pt = L.latLng(u.lat, u.lon);
@@ -651,6 +702,7 @@ function renderResult() {
     fly(b, 17, phone() ? {tl: [60, 80], br: [160, sheetH() + 16]} : PAD());
   }
 }
+$('#result').addEventListener('input', e => { if (e.target.id === 'accRange') onAccuracy(+e.target.value); });
 $('#result').addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   if (b.dataset.act === 'open-lake') return openLake(b.dataset.lake);

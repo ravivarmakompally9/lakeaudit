@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import shutil
 import socket
 import threading
@@ -360,6 +361,39 @@ def test_use_my_location_explains_https_on_a_phone_over_plain_http(app):
     assert "secure (https)" in page.inner_text("#answer") and "Pick on map" in page.inner_text("#answer")
     page.click('#answer [data-act="pick"]')                                  # the phone path still works
     assert page.get_attribute("#btnPick", "aria-pressed") == "true"
+
+
+# ---------------------------------------------------------------- "watch it refuse": the accuracy slider
+
+@SIZES
+def test_accuracy_slider_flips_the_answer_at_the_line(app, server, size):
+    lat, lon = north_of(card(server, "hussain_sagar"), 15)
+    row = nearby(server, lat, lon, "hussain_sagar")
+    d = row["distance_to_extent_line_m"]
+    page = app(size)
+    enter(page, lat, lon, max(1, round(d / 3)))
+    page.wait_for_selector("#answer")
+    assert page.get_attribute("#answer", "data-state") == row["point_zone"]
+    assert page.is_visible(".wi-line") and "line" in page.inner_text(".wi-scale")
+    wider = math.ceil(d) + 5                                                 # past the line: must refuse
+    page.locator("#accRange").fill(str(wider))
+    page.wait_for_selector('#answer[data-state="refused"]')
+    assert page.inner_text("#accOut") == f"±{wider} m" and f"±{wider} m" in page.inner_text("#result .stats")
+    assert page.evaluate("lakeaudit.groups.me.getLayers()[0].getRadius()") == wider      # the circle follows
+    narrower = max(1, math.floor(d) - 2)                                     # back inside: answers again
+    page.locator("#accRange").fill(str(narrower))
+    page.wait_for_selector(f'#answer[data-state="{row["point_zone"]}"]')
+
+
+def test_accuracy_slider_marks_the_100_m_limit_far_from_the_line(app, server):
+    lat, lon = north_of(card(server, "nalla_cheruvu_kukatpally"), 1000)
+    page = app(geo={"latitude": lat, "longitude": lon, "accuracy": 35})
+    page.click("#btnLocate")
+    page.wait_for_selector('#answer[data-state="outside"]')
+    assert "100 m limit" in page.inner_text(".wi-scale")
+    page.locator("#accRange").fill("120")
+    page.wait_for_selector('#answer[data-state="refused"]')
+    assert "hard limit of 100 m" in page.inner_text("#answer")
 
 
 # ---------------------------------------------------------------- open on a phone
