@@ -1,14 +1,14 @@
 {
  "figure": "nalla_restoration_2024_2026.png",
  "lake_id": "nalla_cheruvu_kukatpally",
- "run_id": "run_20260918T172336Z_eb42ab",
- "started_utc": "2026-09-18T17:23:36+00:00",
+ "run_id": "run_20260919T011506Z_8bfbc3",
+ "started_utc": "2026-09-19T01:15:06+00:00",
  "code_version": "0.2.0",
- "code_commit": "d749524247",
- "params_hash": "bd6dcad4f256ce27",
+ "code_commit": "988881e904",
+ "params_hash": "d364e37f32ed72b6",
  "config_files": [
-  "configs/thresholds.yaml",
-  "configs/lakes.yaml"
+  "configs/lakes.yaml",
+  "configs/thresholds.yaml"
  ],
  "boundary_run_id": "run_20260918T170803Z_24bdb3",
  "boundary_code_commit": "8f5bf811a4",
@@ -31,7 +31,10 @@
    "note": "post-monsoon, after the 22 Sep 2024 demolitions",
    "scene_cloud_pct": 0.1,
    "open_water_acres_mndwi_gt0_10m": 11.9,
-   "median_mndwi_in_osm_outline": 0.43
+   "median_mndwi_in_osm_outline": 0.43,
+   "pipeline_open_water_acres": 9.97,
+   "pipeline_run_id": "run_20260918T170803Z_24bdb3",
+   "pipeline_code_commit": "8f5bf811a4"
   },
   {
    "scene_id": "S2B_43QHV_20250328_0_L2A",
@@ -47,7 +50,10 @@
    "note": "post-monsoon; latest scene in our 2019–2025 record",
    "scene_cloud_pct": 0.0,
    "open_water_acres_mndwi_gt0_10m": 13.9,
-   "median_mndwi_in_osm_outline": 0.53
+   "median_mndwi_in_osm_outline": 0.53,
+   "pipeline_open_water_acres": 12.74,
+   "pipeline_run_id": "run_20260918T170803Z_24bdb3",
+   "pipeline_code_commit": "8f5bf811a4"
   },
   {
    "scene_id": "S2A_43QHV_20260310_0_L2A",
