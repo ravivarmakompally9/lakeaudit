@@ -16,4 +16,5 @@ uvicorn>=0.29
 # psycopg2-binary>=2.9
 pytest
 httpx
+qrcode                # "Open on phone" QR code (optional: the server runs without it)
 playwright            # browser tests (then: python -m playwright install chromium)

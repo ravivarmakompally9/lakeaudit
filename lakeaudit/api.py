@@ -11,15 +11,17 @@ commit that produced the boundary it was judged against."""
 from __future__ import annotations
 
 import csv
+import io
 import json
 import math
+import socket
 from datetime import date
 from pathlib import Path
 
 import yaml
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from shapely.geometry import shape, Point
 
@@ -302,6 +304,48 @@ def health():
             "outputs_params_hashes": sorted({r["params_hash"] for r in runs}),
             "outputs_match_params": bool(runs) and all(r["params_hash"] == srv.get("params_hash") for r in runs),
             "boundary_is": _BOUNDARY_IS}
+
+
+_PHONE_GPS = ("Phone browsers share 'Use my location' only over a secure (https) connection. Over this address, "
+              "use Enter coordinates or Pick on map instead; everything else works.")
+
+
+def _lan_ip() -> str | None:
+    """This laptop's address on the local network (opens no connection, sends nothing)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))
+        ip = s.getsockname()[0]
+        return None if ip.startswith("127.") else ip
+    except OSError:
+        return None
+    finally:
+        s.close()
+
+
+def _phone_url(request: Request) -> str | None:
+    ip = _lan_ip()
+    return f"http://{ip}:{request.url.port or 8000}" if ip else None
+
+
+@app.get("/connect", tags=["service"], summary="Address for phones on the same WiFi")
+def connect(request: Request):
+    return {"lan_url": _phone_url(request), "same_network_only": True, "phone_gps": _PHONE_GPS}
+
+
+@app.get("/connect/qr.svg", tags=["service"], summary="QR code of the phone address", response_class=Response)
+def connect_qr(request: Request):
+    url = _phone_url(request)
+    if not url:
+        return JSONResponse({"error": "this computer is not on a network"}, status_code=503)
+    try:                                          # optional: the server runs without it, only the QR is missing
+        import qrcode
+        import qrcode.image.svg
+    except ImportError:
+        return JSONResponse({"error": "QR codes need the qrcode package: pip install qrcode"}, status_code=501)
+    buf = io.BytesIO()
+    qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage, box_size=10, border=2).save(buf)
+    return Response(buf.getvalue(), media_type="image/svg+xml", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/docs", include_in_schema=False)

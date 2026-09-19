@@ -152,3 +152,14 @@ def test_cards_list_every_year_and_the_next_window(client):
     assert api._next_window(years, date(y, 11, 1))["state"] == "open"
     assert api._next_window(years, date(y + 1, 1, 5))["state"] == "closed"
     assert api._next_window([]) is None
+
+
+def test_connect_gives_a_phone_address_and_its_qr(client, monkeypatch):
+    monkeypatch.setattr(api, "_lan_ip", lambda: "192.168.1.50")
+    c = client.get("/connect").json()
+    assert c["lan_url"].startswith("http://192.168.1.50:") and "https" in c["phone_gps"]
+    r = client.get("/connect/qr.svg")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("image/svg+xml") and b"<svg" in r.content
+    monkeypatch.setattr(api, "_lan_ip", lambda: None)                       # laptop not on any network
+    assert client.get("/connect").json()["lan_url"] is None
+    assert client.get("/connect/qr.svg").status_code == 503

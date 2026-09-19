@@ -131,8 +131,10 @@ def _offline(route):
 def app(browser, server):
     opened = []
 
-    def open_app(size=DESKTOP, geo=None, geo_denied=False):
+    def open_app(size=DESKTOP, geo=None, geo_denied=False, insecure=False):
         ctx = browser.new_context(**size, geolocation=geo, permissions=["geolocation"] if geo else [])
+        if insecure:                                    # as a phone sees the laptop over http://<LAN IP>
+            ctx.add_init_script("Object.defineProperty(window, 'isSecureContext', {get: () => false});")
         if geo_denied:
             ctx.add_init_script("navigator.geolocation.getCurrentPosition = (ok, err) => "
                                 "setTimeout(() => err({code: 1, message: 'denied'}), 10);")
@@ -349,6 +351,42 @@ def test_use_my_location_when_permission_is_denied(app):
     assert "denied" in page.inner_text("#answer")
     assert page.locator('#answer [data-act="retry"]').count() == 1
     assert page.locator('#answer [data-act="pick"]').count() == 1
+
+
+def test_use_my_location_explains_https_on_a_phone_over_plain_http(app):
+    page = app(PHONE, geo={"latitude": 17.49, "longitude": 78.40, "accuracy": 10}, insecure=True)
+    page.click("#btnLocate")
+    page.wait_for_selector('#answer[data-state="error"]')
+    assert "secure (https)" in page.inner_text("#answer") and "Pick on map" in page.inner_text("#answer")
+    page.click('#answer [data-act="pick"]')                                  # the phone path still works
+    assert page.get_attribute("#btnPick", "aria-pressed") == "true"
+
+
+# ---------------------------------------------------------------- open on a phone
+
+def test_open_on_phone_shows_a_qr_of_the_lan_address(app):
+    page = app()
+    assert not page.evaluate("document.getElementById('phoneDlg').open")
+    page.click("#btnPhone")
+    page.wait_for_function("document.getElementById('phoneDlg').open")
+    page.wait_for_function("!document.getElementById('phoneUrl').textContent.startsWith('Finding')")
+    url = page.inner_text("#phoneUrl")
+    if url.startswith("http://"):                                           # laptop is on a network
+        page.wait_for_function("document.getElementById('qrImg').complete && document.getElementById('qrImg').naturalWidth > 0")
+        assert page.is_visible("#qrImg") and url.rsplit(":", 1)[-1].isdigit()
+    else:
+        assert "not on a network" in url
+    assert "https" in page.inner_text("#phoneNote")
+    page.click("#btnPhoneClose")
+    assert not page.evaluate("document.getElementById('phoneDlg').open")
+    page.click("#btnPhone")
+    page.wait_for_function("document.getElementById('phoneDlg').open")
+    page.keyboard.press("Escape")
+    assert not page.evaluate("document.getElementById('phoneDlg').open")
+
+
+def test_open_on_phone_button_is_desktop_only(app):
+    assert app(PHONE).is_hidden("#btnPhone")
 
 
 # ---------------------------------------------------------------- enter coordinates

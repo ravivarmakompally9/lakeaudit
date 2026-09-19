@@ -64,6 +64,20 @@ button,input{font:inherit;color:inherit}
 .logo{width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);display:grid;place-items:center;flex:none}
 .brand b{display:block;font-size:17px;font-weight:600;line-height:1.2;letter-spacing:.01em}
 .brand span{display:block;font-size:12.5px;color:rgba(255,255,255,.72)}
+.head-btn{margin-left:auto;min-height:44px;padding:0 12px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);
+  color:#fff;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:6px;cursor:pointer;transition:background .15s}
+.head-btn:hover{background:rgba(255,255,255,.16)}
+.dlg{border:0;border-radius:18px;padding:0;width:min(360px,calc(100vw - 32px));box-shadow:0 20px 60px rgba(14,27,29,.35);color:var(--ink)}
+.dlg::backdrop{background:rgba(14,27,29,.45);backdrop-filter:blur(2px)}
+.dlg[open]{animation:rise .2s ease-out}
+.dlg-body{padding:22px 22px 18px;text-align:center}
+.dlg h2{margin:0 0 4px;font-size:19px;font-weight:600}
+.dlg .sub{margin:0 0 14px}
+.qr{display:grid;place-items:center;width:232px;height:232px;margin:0 auto;border-radius:14px;background:#fff;box-shadow:inset 0 0 0 1px var(--line)}
+.qr img{width:212px;height:212px;image-rendering:pixelated}
+.url{margin:12px 0 0;font:500 14px var(--mono);color:var(--teal);word-break:break-all}
+.dlg .fine{text-align:left;margin-top:12px}
+.dlg .btn{margin-top:16px}
 .body{flex:1;overflow:auto;padding:20px}
 .body > section:not([hidden]){animation:rise .22s ease-out}
 h1{font-size:21px;font-weight:600;line-height:1.25;margin:0 0 4px;letter-spacing:-.005em}
@@ -190,6 +204,7 @@ details.prov dd{margin:0;font:12px/1.5 var(--mono);overflow-wrap:anywhere}
   .grip{display:block;position:absolute;z-index:2;top:7px;left:50%;width:40px;height:4px;margin-left:-20px;border-radius:2px;background:rgba(255,255,255,.35)}
   .head{padding:18px 16px 12px}
   .logo{width:32px;height:32px}
+  .head-btn{display:none}
   .body{padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
   .layers{width:auto}
   .layers-toggle{display:flex;align-items:center;gap:6px;min-height:44px;padding:0 16px;border:0;background:none;font-weight:600;cursor:pointer}
@@ -211,6 +226,7 @@ details.prov dd{margin:0;font:12px/1.5 var(--mono);overflow-wrap:anywhere}
   <header class="head">
     <div class="logo" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 18 18"><path d="M2 11c2-4.5 5-6.5 8-6.5 3 0 6 2 6 5.2C16 13.3 12.4 15 9 15c-3.6 0-7-1.3-7-4z" fill="none" stroke="#ff6a8d" stroke-width="1.9"/></svg></div>
     <div class="brand"><b>lakeaudit</b><span id="meta">Loading…</span></div>
+    <button type="button" class="head-btn" id="btnPhone" aria-haspopup="dialog" title="Open this app on a phone"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="1.5" width="8" height="13" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7 12.2h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Open on phone</button>
   </header>
   <div class="body">
     <section id="vHome">
@@ -268,6 +284,17 @@ details.prov dd{margin:0;font:12px/1.5 var(--mono);overflow-wrap:anywhere}
     </fieldset>
   </div>
 </div>
+
+<dialog class="dlg" id="phoneDlg" aria-labelledby="phoneTitle">
+  <div class="dlg-body">
+    <h2 id="phoneTitle">Open on your phone</h2>
+    <p class="sub">Scan with the phone camera. The phone must be on the same WiFi as this laptop.</p>
+    <div class="qr" id="qrBox"><img id="qrImg" alt="QR code of this app's address on the local network" width="212" height="212"></div>
+    <p class="url" id="phoneUrl">…</p>
+    <p class="fine" id="phoneNote">On the phone, use <b>Enter coordinates</b> or <b>Pick on map</b>: phone browsers share GPS only over a secure (https) connection.</p>
+    <button type="button" class="btn block" id="btnPhoneClose">Done</button>
+  </div>
+</dialog>
 
 <div class="banner" id="toast" role="status" hidden><span>Click the map to pick a point</span></div>
 <div class="banner syn" id="synBanner" hidden><span>Synthetic sample data — not a result</span></div>
@@ -565,6 +592,7 @@ function locate(lakeId = null) {
   show('vResult');
   setResult('<p class="status">Finding your location…</p>');
   if (!('geolocation' in navigator)) return geoFail('This browser has no location service.');
+  if (!window.isSecureContext) return geoFail('This browser shares your location only over a secure (https) connection. Use Pick on map or Enter coordinates instead.');
   navigator.geolocation.getCurrentPosition(
     p => analyze(p.coords.latitude, p.coords.longitude, Math.max(1, Math.round(p.coords.accuracy)), 'gps', lakeId),
     e => geoFail({1: 'Location permission was denied.', 2: 'Your location is unavailable right now.', 3: 'Finding your location timed out.'}[e.code] || e.message),
@@ -659,6 +687,25 @@ $('#btnCheck').addEventListener('click', () => {
   $('#formErr').hidden = !err;
   if (!err) analyze(lat, lon, acc, 'manual', null);
 });
+
+/* ---------------------------------------------------------------- open on a phone */
+const dlg = $('#phoneDlg');
+$('#btnPhone').addEventListener('click', async () => {
+  $('#phoneUrl').textContent = 'Finding this laptop on the network…';
+  $('#qrBox').hidden = true;
+  dlg.showModal();
+  try {
+    const c = await api('/connect');
+    if (!c.lan_url) throw new Error('offline');
+    $('#qrImg').src = `/connect/qr.svg?t=${Date.now()}`;
+    $('#qrBox').hidden = false;
+    $('#phoneUrl').textContent = c.lan_url;
+  } catch (err) {
+    $('#phoneUrl').textContent = 'This laptop is not on a network. Connect it to WiFi and try again.';
+  }
+});
+$('#btnPhoneClose').addEventListener('click', () => dlg.close());
+dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });   // click on the backdrop
 
 /* ---------------------------------------------------------------- layers */
 function setLayersOpen(open) {
