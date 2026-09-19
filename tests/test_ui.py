@@ -9,6 +9,7 @@ One-time setup:  pip install playwright && python -m playwright install chromium
 from __future__ import annotations
 
 import base64
+import csv
 import json
 import math
 import shutil
@@ -84,6 +85,30 @@ def trees(tmp_path_factory):
     rec = json.loads(p.read_text()); rec["ours"]["run_id"] = "run_earlier"; p.write_text(json.dumps(rec))
     _validate(real, "nalla_cheruvu_kukatpally", 0, kind="field_gps", shift_m=3000)   # a walk around another lake
     return {"real": real, "synth": _tree(tmp_path_factory.mktemp("synth"), ["alwal_cheruvu"])}
+
+
+@pytest.fixture(scope="module")
+def dry(tmp_path_factory):
+    """Nalla with 2023 made a clear scene with no open water: acres 0 and no outline, as a real run records it."""
+    root = _tree(tmp_path_factory.mktemp("dry"), ["nalla_cheruvu_kukatpally"], real=("nalla_cheruvu_kukatpally",))
+    out = root / "outputs" / "nalla_cheruvu_kukatpally"
+    run = json.loads((out / "run.json").read_text())
+    s = run["summary"]
+    s["years_with_data"] = [y for y in s["years_with_data"] if y != 2023]
+    s["years_no_open_water"] = sorted(set(s.get("years_no_open_water") or []) | {2023})
+    (out / "run.json").write_text(json.dumps(run))
+    rows = list(csv.DictReader((out / "water_by_year.csv").open()))
+    for r in rows:
+        if r["year"] == "2023":
+            r["area_m2"], r["area_acres"] = "0.0", "0.0"
+    with (out / "water_by_year.csv").open("w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    fc = json.loads((out / "water_by_year.geojson").read_text())
+    fc["features"] = [f for f in fc["features"] if f["properties"]["year"] != 2023]
+    (out / "water_by_year.geojson").write_text(json.dumps(fc))
+    return root
 
 
 @pytest.fixture(scope="module")
@@ -309,6 +334,122 @@ def test_check_a_location_here_judges_against_that_lake(app, server):
     page.click('#lake [data-act="check-here"]')
     page.wait_for_selector("#answer")
     assert page.inner_text("#result h1") == "Hussain Sagar"
+
+
+# ---------------------------------------------------------------- water by year on the map
+
+def year_drawn(page):
+    """Years of the water polygons on the map right now (one entry per feature)."""
+    return page.evaluate("lakeaudit.groups.year.getLayers().flatMap(l => l.toGeoJSON().features.map(f => f.properties.year))")
+
+
+def pressed(page):
+    return page.eval_on_selector_all('#lake button.yr[aria-pressed="true"]', "els => els.map(e => +e.dataset.year)")
+
+
+def watch_years(page):
+    """Record every year the strip highlights, in order."""
+    page.evaluate("""window.__yrs = []; new MutationObserver(ms => ms.forEach(m => {
+        if (m.target.matches('button.yr') && m.target.getAttribute('aria-pressed') === 'true') window.__yrs.push(+m.target.dataset.year);
+    })).observe(document.getElementById('lake'), {subtree: true, attributes: true, attributeFilter: ['aria-pressed']})""")
+
+
+@SIZES
+def test_year_buttons_draw_that_years_water_on_the_map(app, server, size):
+    c = card(server, "hussain_sagar")
+    page = app(size)
+    page.locator("#lakeList .lake", has_text="Hussain Sagar").click()
+    buttons = page.locator("#lake .years button.yr")
+    assert [int(buttons.nth(i).get_attribute("data-year")) for i in range(buttons.count())] == [r["year"] for r in c["area_by_year"]]
+    assert page.locator("#lake .years .yr-next button").count() == 0 and page.eval_on_selector("#lake .yr-next", "e => e.tagName") == "DIV"
+    assert year_drawn(page) == [] and pressed(page) == [] and "Tap a year" in page.inner_text("#yrNote")
+    assert page.evaluate("+lakeaudit.map.getPane('yearPane').style.zIndex < +lakeaudit.map.getPane('extentPane').style.zIndex")
+    seen = next(r for r in c["area_by_year"] if r["status"] == "observed")
+    page.click(f'#lake button.yr[data-year="{seen["year"]}"]')
+    assert pressed(page) == [seen["year"]]
+    assert year_drawn(page) and set(year_drawn(page)) == {seen["year"]}             # that year's polygon, no other
+    note = page.inner_text("#yrNote")
+    assert str(seen["year"]) in note and "open water" in note and "teal" in note
+    gap = next(r for r in c["area_by_year"] if r["status"] == "insufficient")
+    page.click(f'#lake button.yr[data-year="{gap["year"]}"]')
+    assert pressed(page) == [gap["year"]] and year_drawn(page) == []
+    assert "no usable scene" in page.inner_text("#yrNote") and "nothing to draw" in page.inner_text("#yrNote")
+    page.click(f'#lake button.yr[data-year="{gap["year"]}"]')                        # pressed again: cleared
+    assert pressed(page) == [] and year_drawn(page) == [] and "Tap a year" in page.inner_text("#yrNote")
+
+
+def test_a_clear_year_with_no_open_water_draws_nothing_and_says_so(app, trees, dry):
+    api._ROOT = dry
+    api._load()
+    try:
+        page = app()
+        page.locator("#lakeList .lake", has_text="Nalla Cheruvu").click()
+        cell = page.locator('#lake button.yr[data-year="2023"]')
+        assert cell.get_attribute("data-status") == "no_open_water"
+        cell.click()
+        assert pressed(page) == [2023] and year_drawn(page) == []
+        assert "clear scene, no open water" in page.inner_text("#yrNote") and "nothing to draw" in page.inner_text("#yrNote")
+    finally:
+        api._ROOT = trees["real"]
+        api._load()
+
+
+@SIZES
+def test_play_steps_through_every_year_once_and_stops_on_the_last(app, server, size):
+    rows = card(server, "hussain_sagar")["area_by_year"]
+    years = [r["year"] for r in rows]
+    page = app(size)
+    page.locator("#lakeList .lake", has_text="Hussain Sagar").click()
+    page.click(f'#lake button.yr[data-year="{years[3]}"]')                     # a year already shown: Play still starts at the first
+    page.evaluate("lakeaudit.state.stepMs = 80")
+    watch_years(page)
+    assert "Play" in page.inner_text("#yrPlay") and page.get_attribute("#yrPlay", "aria-pressed") == "false"
+    page.click("#yrPlay")
+    assert page.get_attribute("#yrPlay", "aria-pressed") == "true" and "Pause" in page.inner_text("#yrPlay")
+    page.wait_for_function("document.getElementById('yrPlay').getAttribute('aria-pressed') === 'false'", timeout=5000)
+    assert page.evaluate("window.__yrs") == years                                # 2019 → 2025, each once, in order
+    assert pressed(page) == [years[-1]] and "Play" in page.inner_text("#yrPlay")
+    assert set(year_drawn(page)) == ({years[-1]} if rows[-1]["status"] == "observed" else set())
+    page.wait_for_timeout(400)
+    assert page.evaluate("window.__yrs") == years and page.evaluate("lakeaudit.state.play") is None   # it stopped
+
+
+def test_pause_holds_the_year_and_play_continues_from_the_next(app, server):
+    years = [r["year"] for r in card(server, "hussain_sagar")["area_by_year"]]
+    page = app()
+    page.locator("#lakeList .lake", has_text="Hussain Sagar").click()
+    page.evaluate("lakeaudit.state.stepMs = 60000")                            # first frame only, then wait
+    page.click("#yrPlay")
+    assert pressed(page) == [years[0]]
+    page.click("#yrPlay")                                                      # Pause
+    assert page.get_attribute("#yrPlay", "aria-pressed") == "false" and page.evaluate("lakeaudit.state.play") is None
+    assert pressed(page) == [years[0]]                                         # the paused year stays on the map
+    page.click("#yrPlay")                                                      # Play again: the next year
+    assert pressed(page) == [years[1]] and page.get_attribute("#yrPlay", "aria-pressed") == "true"
+    page.click(f'#lake button.yr[data-year="{years[4]}"]')                     # picking a year stops playback
+    assert page.get_attribute("#yrPlay", "aria-pressed") == "false" and pressed(page) == [years[4]]
+
+
+def test_year_layer_clears_on_back_and_when_another_lake_opens(app):
+    page = app()
+    page.locator("#lakeList .lake", has_text="Hussain Sagar").click()
+    page.evaluate("lakeaudit.state.stepMs = 60000")
+    page.click("#yrPlay")
+    assert year_drawn(page)
+    page.click("#vLake [data-back]")
+    assert year_drawn(page) == [] and page.evaluate("lakeaudit.state.play") is None
+    page.locator("#lakeList .lake", has_text="Hussain Sagar").click()
+    assert pressed(page) == [] and page.get_attribute("#yrPlay", "aria-pressed") == "false"   # nothing carried over
+    page.click("#yrPlay")
+    assert year_drawn(page)
+    page.evaluate("""lakeaudit.groups.markers.getLayers()
+        .find(m => m.options.lakeId === 'nalla_cheruvu_kukatpally').fire('click')""")        # another lake, from the map
+    assert page.inner_text("#lake h1") == "Nalla Cheruvu (Kukatpally)"
+    assert year_drawn(page) == [] and page.evaluate("lakeaudit.state.play") is None and pressed(page) == []
+    page.click("#yrPlay")
+    assert year_drawn(page)
+    page.click('#lake [data-act="zoom"]')                                     # other controls leave the year alone
+    assert year_drawn(page)
 
 
 # ---------------------------------------------------------------- use my location
