@@ -17,14 +17,38 @@ from pathlib import Path
 
 import yaml
 from fastapi import FastAPI, Query
+from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from shapely.geometry import shape, Point
 
 from .geo import utm_crs_for, to_utm, to_wgs, m2_to_acres
+from .provenance import _git_commit, _hash_files
 from .validate import lake_validations
 
-app = FastAPI(title="lakeaudit lookup", version="0.2")
+_API_DESCRIPTION = """
+Satellite-derived lake boundary **screening** for Hyderabad, with a published abstention rule.
+
+* The red line is the **maximum post-monsoon water extent observed by Sentinel-2 since 2019**: one witness
+  to the Full Tank Level (FTL), **not** the notified FTL and **not** a legal determination.
+* `/lookup` **refuses to answer** when the device's GPS uncertainty is larger than its distance to the line.
+* Every answer carries the `run_id`, `code_commit` and `params_hash` that produced it.
+* Only lakes a pipeline run has produced are served. Nothing is invented.
+
+Web app: [`/`](/) · Service health: [`/health`](/health)
+"""
+_TAGS = [
+    {"name": "check", "description": "Check a point against the observed extent: distances, zones, and the abstention rule."},
+    {"name": "lakes", "description": "Processed lakes and their geometry. Parcel geometry only, never owner identity."},
+    {"name": "service", "description": "Health and provenance of what this server is serving."},
+]
+_SWAGGER = {"defaultModelsExpandDepth": -1, "docExpansion": "list", "tryItOutEnabled": True}
+_FAVICON = ("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' "
+            "rx='8' fill='%230e1b1d'/%3E%3Cpath d='M5 19c3.5-7.5 8.5-10.5 13.5-10.5 5 0 8.5 3.5 8.5 8.3 0 6-6 8.7-12 8.7-6 0-10-2.3-10-6.5z' "
+            "fill='none' stroke='%23ff6a8d' stroke-width='2.6'/%3E%3C/svg%3E")
+app = FastAPI(title="lakeaudit API", version="0.3", description=_API_DESCRIPTION, openapi_tags=_TAGS, docs_url=None)
+_LAT = {"description": "WGS84 latitude", "examples": [17.430068]}
+_LON = {"description": "WGS84 longitude", "examples": [78.486859]}
 _ROOT = Path(__file__).resolve().parents[1]
 _STATIC = Path(__file__).resolve().parent / "static"
 _STATE: dict = {"lakes": {}, "cfg": None, "register": {}}
@@ -39,6 +63,8 @@ def _load():
     _STATE["cfg"] = cfg
     reg = yaml.safe_load((_ROOT / "configs" / "lakes.yaml").read_text())
     _STATE["register"] = {row["id"]: row for row in reg.get("lakes", [])}
+    _STATE["server"] = {"code_commit": _git_commit(_ROOT),
+                        "params_hash": _hash_files([_ROOT / "configs" / "lakes.yaml", _ROOT / "configs" / "thresholds.yaml"])}
     _STATE["lakes"] = {}
     for d in sorted((_ROOT / "outputs").glob("*")):
         # a lake appears only if a run produced it: never invent geometry
@@ -141,13 +167,14 @@ def _startup():
     _load()
 
 
-@app.get("/lakes")
+@app.get("/lakes", tags=["lakes"], summary="List processed lakes")
 def lakes():
     """One card per processed lake. Lakes in the register with no run do not appear."""
     return [_card_now(v) for v in _STATE["lakes"].values()]
 
 
-@app.get("/lake/{lake_id}")
+@app.get("/lake/{lake_id}", tags=["lakes"], summary="One lake with its geometry",
+         description="The lake's card plus its run manifest and GeoJSON: observed extent and buffer ring, water by year, and buildings by zone.")
 def lake(lake_id: str):
     v = _STATE["lakes"].get(lake_id)
     if not v:
@@ -158,8 +185,8 @@ def lake(lake_id: str):
             "structures": _geojson(v["dir"] / "structures.geojson")}
 
 
-@app.get("/nearby")
-def nearby(lat: float = Query(...), lon: float = Query(...)):
+@app.get("/nearby", tags=["check"], summary="Distance from a point to every lake's edge")
+def nearby(lat: float = Query(..., **_LAT), lon: float = Query(..., **_LON)):
     """Every processed lake, nearest observed-extent edge first. Distances in metres, computed in UTM."""
     utm = utm_crs_for(lon, lat)
     pt_u = to_utm(Point(lon, lat), utm)
@@ -178,9 +205,12 @@ def nearby(lat: float = Query(...), lon: float = Query(...)):
             "distance_is": "metres from the point to the edge of each lake's maximum observed water extent", "lakes": rows}
 
 
-@app.get("/lookup")
-def lookup(lat: float = Query(...), lon: float = Query(...), accuracy_m: float = Query(..., description="device 95% GPS radius, metres"),
-           lake_id: str | None = Query(None, description="judge against this lake instead of the nearest one")):
+@app.get("/lookup", tags=["check"], summary="Check a point (abstains when the GPS is too uncertain)",
+         description="Zone of the point relative to the nearest lake's observed extent, or a refusal with the reason "
+                     "when the reported accuracy is larger than the distance to the line.")
+def lookup(lat: float = Query(..., **_LAT), lon: float = Query(..., **_LON),
+           accuracy_m: float = Query(..., description="device 95% GPS radius, metres", examples=[5]),
+           lake_id: str | None = Query(None, description="judge against this lake instead of the nearest one", examples=["hussain_sagar"])):
     cfg = _STATE["cfg"]["abstention"]
     pt = Point(lon, lat)
     if not _STATE["lakes"]:
@@ -240,6 +270,30 @@ _DEMO = """<!doctype html><meta charset=utf-8><title>lakeaudit lookup</title>
 async function go(){const q=new URLSearchParams({lat:lat.value,lon:lon.value,accuracy_m:acc.value});const r=await fetch('/lookup?'+q);const j=await r.json();out.textContent=JSON.stringify(j,null,2);msg.innerHTML=j.abstain?'<span class=ab>ABSTAINED — '+j.reason+'</span>':'<b>'+j.verdict+'</b> — '+(j.plain||'');}
 function useGps(){navigator.geolocation.getCurrentPosition(p=>{lat.value=p.coords.latitude.toFixed(6);lon.value=p.coords.longitude.toFixed(6);acc.value=Math.round(p.coords.accuracy);go();},e=>msg.textContent='GPS error: '+e.message,{enableHighAccuracy:true,timeout:15000});}
 </script>"""
+
+
+@app.get("/health", tags=["service"], summary="Service health and provenance")
+def health():
+    """What this server is serving, and whether it matches the code and config it is running."""
+    runs = [v["run"] for v in _STATE["lakes"].values()]
+    real = [r for r in runs if r["data_source"] != "sample"]
+    srv = _STATE.get("server") or {}
+    return {"status": "ok" if runs else "no_lakes",
+            "lakes": len(real), "synthetic_lakes": len(runs) - len(real),
+            "server_commit": srv.get("code_commit"), "params_hash": srv.get("params_hash"),
+            "outputs_commits": sorted({r["code_commit"] for r in runs}),
+            "outputs_params_hashes": sorted({r["params_hash"] for r in runs}),
+            "outputs_match_params": bool(runs) and all(r["params_hash"] == srv.get("params_hash") for r in runs),
+            "boundary_is": _BOUNDARY_IS}
+
+
+@app.get("/docs", include_in_schema=False)
+def docs():
+    """Swagger UI pinned to a light scheme: on a dark-mode laptop the default renders grey on black."""
+    page = get_swagger_ui_html(openapi_url=app.openapi_url, title="lakeaudit API", swagger_favicon_url=_FAVICON,
+                               swagger_ui_parameters=_SWAGGER)
+    light = '<meta name="color-scheme" content="light"><style>:root{color-scheme:light}html,body{background:#fff}</style>'
+    return HTMLResponse(page.body.decode().replace("<head>", "<head>" + light, 1))
 
 
 app.mount("/static", StaticFiles(directory=_STATIC), name="static")

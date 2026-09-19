@@ -114,3 +114,25 @@ def test_lake_cards_carry_current_validation_only(client, tmp_path):
     assert rows[0]["iou"] == 1.0 and rows[0]["counted"] is False and rows[0]["synthetic"] is True
     assert rows[0]["ref_unmatched_parts"] == 0 and rows[0]["no_part_overlaps"] is False
     assert client.get("/lake/nalla_cheruvu_kukatpally").json()["card"]["validation"] == rows
+
+
+def test_health_reports_what_is_served(client):
+    h = client.get("/health").json()
+    assert h["status"] == "ok"
+    assert h["lakes"] == 0 and h["synthetic_lakes"] == 2           # this temp tree holds two --offline runs
+    assert h["outputs_match_params"] is True                        # runs used the same configs the server reads
+    assert h["server_commit"] and h["params_hash"] and h["outputs_commits"]
+    assert "NOT the notified FTL" in h["boundary_is"]
+
+
+def test_openapi_documents_every_endpoint(client):
+    spec = client.get("/openapi.json").json()
+    assert spec["info"]["title"] == "lakeaudit API"
+    assert {t["name"] for t in spec["tags"]} == {"check", "lakes", "service"}
+    for path in ["/lakes", "/lake/{lake_id}", "/nearby", "/lookup", "/health"]:
+        op = spec["paths"][path]["get"]
+        assert op.get("summary") and op.get("tags"), path
+    params = {p["name"]: p for p in spec["paths"]["/lookup"]["get"]["parameters"]}
+    assert params["lat"]["schema"].get("examples") or params["lat"].get("examples")
+    assert "/" not in spec["paths"] and "/classic" not in spec["paths"]   # the app pages are not API
+    assert client.get("/docs").status_code == 200

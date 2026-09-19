@@ -205,6 +205,29 @@ def test_home_lists_real_lakes_and_hides_synthetic(app, size):
     assert len(labels) == 2 and all(h < 30 for h in labels)                   # single-line map labels
 
 
+@SIZES
+def test_loading_placeholder_goes_away_and_map_labels_never_overlap(app, size):
+    page = app(size)
+    assert page.is_hidden("#lakeSkel") and page.is_visible("#lakeList")
+
+    def labels():
+        return page.eval_on_selector_all(".tip-lake", """els => els.map(e => {const r = e.getBoundingClientRect();
+            return {off: e.classList.contains('tip-off'), l: r.left, r: r.right, t: r.top, b: r.bottom};})""")
+
+    def overlaps(ls):
+        on = [x for x in ls if not x["off"]]
+        return [(a, b) for i, a in enumerate(on) for b in on[i + 1:]
+                if a["l"] < b["r"] and a["r"] > b["l"] and a["t"] < b["b"] and a["b"] > b["t"]]
+    assert not overlaps(labels()) and not any(x["off"] for x in labels())      # fitted view: every label shows
+    page.evaluate("lakeaudit.map.setView([17.45, 78.45], 8, {animate: false})")  # zoom out until labels collide
+    page.wait_for_timeout(300)
+    ls = labels()
+    assert any(x["off"] for x in ls) and not overlaps(ls)                       # one is hidden, none stack
+    page.evaluate("lakeaudit.map.setView([17.45, 78.45], 12, {animate: false})")
+    page.wait_for_timeout(300)
+    assert not any(x["off"] for x in labels())                                  # room again: all come back
+
+
 def test_lake_buttons_open_each_lake_and_back_returns_home(app):
     page = app()
     for i, name in enumerate(["Hussain Sagar", "Nalla Cheruvu (Kukatpally)"]):

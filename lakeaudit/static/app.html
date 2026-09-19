@@ -4,102 +4,129 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
+<meta name="theme-color" content="#0e1b1d">
+<meta name="description" content="Check a location against the maximum water extent Sentinel-2 has observed for Hyderabad's lakes since 2019.">
 <title>lakeaudit · lake boundary check</title>
-<link rel="icon" href="data:,">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230e1b1d'/%3E%3Cpath d='M5 19c3.5-7.5 8.5-10.5 13.5-10.5 5 0 8.5 3.5 8.5 8.3 0 6-6 8.7-12 8.7-6 0-10-2.3-10-6.5z' fill='none' stroke='%23ff6a8d' stroke-width='2.6'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/static/leaflet/leaflet.css">
 <style>
 :root{
-  --paper:#eef1f0; --surface:#fff; --ink:#0e1b1d; --muted:#5a6a6c; --line:#dde3e1;
-  --teal:#0a6f7d; --red:#a8123a; --ochre:#956426; --green:#2f6b4f; --grey:#6b7a7c;
+  --paper:#eef1f0; --surface:#fff; --ink:#0e1b1d; --ink-2:#163a40; --muted:#5a6a6c; --line:#e1e7e5; --soft:#f5f8f7;
+  --teal:#0a6f7d; --teal-2:#0d8799; --red:#a8123a; --ochre:#956426; --green:#2f6b4f; --grey:#6b7a7c;
   --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
-  --panel-w:360px; --layers-w:200px; --gap:16px; --r:12px;
-  --shadow:0 2px 6px rgba(14,27,29,.08),0 12px 32px rgba(14,27,29,.12);
+  --panel-w:368px; --layers-w:212px; --gap:16px; --r:14px;
+  --shadow:0 1px 2px rgba(14,27,29,.06),0 10px 30px rgba(14,27,29,.14);
+  --shadow-sm:0 1px 2px rgba(14,27,29,.08),0 2px 8px rgba(14,27,29,.06);
   --sheet-h:0px;
 }
 [hidden]{display:none!important}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;font:15px/1.5 var(--sans);color:var(--ink);background:var(--paper);-webkit-font-smoothing:antialiased}
 button,input{font:inherit;color:inherit}
-:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+:focus-visible{outline:3px solid var(--teal-2);outline-offset:2px}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes shimmer{from{background-position:-240px 0}to{background-position:240px 0}}
+@keyframes pulse{0%{transform:scale(.6);opacity:.55}100%{transform:scale(2.6);opacity:0}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
-/* map */
-#map{position:fixed;inset:0;background:var(--paper)}
+/* ---------- map ---------- */
+#map{position:fixed;inset:0;background:#e9eeec}
 #map.picking,#map.picking .leaflet-interactive{cursor:crosshair}
-.leaflet-container{font:inherit;background:var(--paper)}
+.leaflet-container{font:inherit;background:#e9eeec}
+.tiles-muted{filter:saturate(.28) contrast(.9) brightness(1.06)}
 .leaflet-pane > svg{pointer-events:none}   /* stacked vector panes must not swallow clicks */
-.leaflet-control-zoom a{width:44px!important;height:44px!important;line-height:44px!important;font-size:20px!important}
-.tip{background:#fff;border:1px solid var(--line);border-radius:6px;box-shadow:0 1px 2px rgba(14,27,29,.12);color:var(--ink);font:500 12.5px/1.2 var(--sans);padding:3px 8px}
+.leaflet-control-zoom{border:0!important;box-shadow:var(--shadow-sm)!important;border-radius:10px!important;overflow:hidden}
+.leaflet-control-zoom a{width:44px!important;height:44px!important;line-height:44px!important;font-size:20px!important;color:var(--ink)!important}
+.leaflet-control-attribution{background:rgba(255,255,255,.8)!important;border-radius:6px 0 0 0;font-size:11px}
+.pin{display:block;width:18px;height:18px;border-radius:50%;background:#fff;border:3.5px solid var(--red);box-shadow:0 1px 4px rgba(14,27,29,.35);transition:transform .15s}
+.pin:hover{transform:scale(1.25)}
+.me-dot{position:relative;display:block;width:16px;height:16px;border-radius:50%;background:var(--ink);border:3px solid #fff;box-shadow:0 1px 4px rgba(14,27,29,.45)}
+.me-dot::after{content:"";position:absolute;inset:-3px;border-radius:50%;background:var(--ink);animation:pulse 2s ease-out infinite;z-index:-1}
+.tip{background:#fff;border:0;border-radius:6px;box-shadow:var(--shadow-sm);color:var(--ink);font:500 12.5px/1.2 var(--sans);padding:4px 8px}
 .tip::before{display:none}
+.tip-off{visibility:hidden}
 .z-hi .tip-lake{display:none}
-.tip.me{background:var(--ink);border-color:var(--ink);color:#fff;font-family:var(--mono)}
+.tip.me{background:var(--ink);color:#fff;font-family:var(--mono)}
+.leaflet-popup-content-wrapper{border-radius:12px;box-shadow:var(--shadow)}
 .leaflet-popup-content{margin:12px 14px}
 .pop b{display:block;font-size:14px;font-weight:600}
 .pop p{margin:2px 0 6px;font-size:13px;color:var(--muted)}
 .pop span{display:block;font:12px/1.5 var(--mono);color:var(--muted)}
 
-/* panel */
+/* ---------- panel ---------- */
 .panel{position:fixed;z-index:1000;top:var(--gap);left:var(--gap);bottom:var(--gap);width:var(--panel-w);display:flex;flex-direction:column;background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
 .grip{display:none}
-.head{display:flex;align-items:center;gap:10px;padding:14px 20px;border-bottom:1px solid var(--line)}
-.logo{width:30px;height:30px;border-radius:8px;background:var(--ink);display:grid;place-items:center;flex:none}
-.brand b{display:block;font-size:16px;font-weight:600;line-height:1.2}
-.brand span{display:block;font-size:12.5px;color:var(--muted)}
+.head{position:relative;display:flex;align-items:center;gap:12px;padding:16px 20px;background:linear-gradient(135deg,var(--ink) 0%,var(--ink-2) 100%);color:#fff}
+.logo{width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);display:grid;place-items:center;flex:none}
+.brand b{display:block;font-size:17px;font-weight:600;line-height:1.2;letter-spacing:.01em}
+.brand span{display:block;font-size:12.5px;color:rgba(255,255,255,.72)}
 .body{flex:1;overflow:auto;padding:20px}
-h1{font-size:20px;font-weight:600;line-height:1.25;margin:0 0 4px}
+.body > section:not([hidden]){animation:rise .22s ease-out}
+h1{font-size:21px;font-weight:600;line-height:1.25;margin:0 0 4px;letter-spacing:-.005em}
 .sub{margin:0 0 18px;color:var(--muted);font-size:14px}
-.label{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:24px 0 8px}
-.eyebrow{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.label{font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:26px 0 10px}
+.eyebrow{font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--teal)}
 .status{color:var(--muted);font-size:14px;margin:0}
 .status.bad{color:var(--red)}
 
-.btn{min-height:44px;padding:0 16px;border-radius:8px;border:1px solid var(--line);background:#fff;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
-.btn:hover{background:#f4f7f6}
-.btn.primary{background:var(--teal);border-color:var(--teal);color:#fff}
-.btn.primary:hover{background:#085c68}
+.btn{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:#fff;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:background .15s,border-color .15s,box-shadow .15s,transform .05s}
+.btn:hover{background:var(--soft);border-color:#cfd9d6}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:linear-gradient(180deg,var(--teal-2),var(--teal));border-color:var(--teal);color:#fff;box-shadow:0 1px 2px rgba(10,111,125,.25),0 4px 12px rgba(10,111,125,.22)}
+.btn.primary:hover{background:linear-gradient(180deg,#0f93a6,#0b7888)}
 .btn.block{width:100%}
-.btn.lg{min-height:52px;font-size:16px;font-weight:600}
-.btn[aria-pressed="true"]{border-color:var(--teal);color:var(--teal);background:#e8f3f4}
+.btn.lg{min-height:54px;font-size:16px;font-weight:600}
+.btn[aria-pressed="true"]{border-color:var(--teal);color:var(--teal);background:#e6f3f4}
+.btn svg{flex:none}
 .stack{display:grid;gap:8px;margin-top:16px}
 .row{display:flex;gap:8px;margin-top:12px}
 .row > .btn{flex:1}
-.back{min-height:44px;margin:-10px 0 6px -8px;padding:0 8px;border:0;background:none;color:var(--teal);font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;border-radius:8px}
-.back:hover{background:#eef6f6}
+.back{min-height:44px;margin:-10px 0 6px -8px;padding:0 10px 0 6px;border:0;background:none;color:var(--teal);font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;border-radius:8px;transition:background .15s}
+.back:hover{background:#eaf5f6}
 
-details.manual{margin-top:10px;border:1px solid var(--line);border-radius:8px}
-details.manual summary{min-height:44px;padding:0 14px;display:flex;align-items:center;cursor:pointer;font-weight:500;list-style:none}
+details.manual{margin-top:10px;border:1px solid var(--line);border-radius:10px;background:#fff;transition:box-shadow .15s}
+details.manual[open]{box-shadow:var(--shadow-sm)}
+details.manual summary{min-height:44px;padding:0 14px;display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500;list-style:none}
 details.manual summary::-webkit-details-marker{display:none}
-details.manual summary::after{content:"";margin-left:auto;width:7px;height:7px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg)}
+details.manual summary::after{content:"";margin-left:auto;width:7px;height:7px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);transition:transform .15s}
 details.manual[open] summary::after{transform:rotate(-135deg)}
 .form{padding:0 14px 14px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .field{display:block;font-size:12.5px;color:var(--muted);margin-top:8px}
-.field input{display:block;width:100%;min-height:44px;margin-top:4px;padding:0 10px;border:1px solid var(--line);border-radius:6px;background:#fff;font:14px var(--mono);color:var(--ink)}
-.field input:focus{border-color:var(--teal)}
+.field input{display:block;width:100%;min-height:44px;margin-top:4px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--soft);font:14px var(--mono);color:var(--ink);transition:border-color .15s,background .15s}
+.field input:focus{border-color:var(--teal);background:#fff;outline:none;box-shadow:0 0 0 3px rgba(13,135,153,.15)}
 .err{color:var(--red);font-size:13px;margin:10px 0 0}
 
-.lakes{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.lakes{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .lakes li + li{border-top:1px solid var(--line)}
-.lake{width:100%;min-height:52px;padding:8px 14px;border:0;background:#fff;display:flex;align-items:center;gap:12px;text-align:left;cursor:pointer}
-.lake:hover{background:#f4f7f6}
+.lake{width:100%;min-height:54px;padding:8px 14px;border:0;background:#fff;display:flex;align-items:center;gap:12px;text-align:left;cursor:pointer;transition:background .15s}
+.lake:hover{background:var(--soft)}
+.lake .dot{width:10px;height:10px;border-radius:50%;border:2.5px solid var(--red);flex:none}
 .lake .nm{flex:1;font-weight:500}
 .lake .ac{font:13px var(--mono);color:var(--muted)}
-.chev{width:7px;height:7px;border-right:2px solid #a9b4b2;border-top:2px solid #a9b4b2;transform:rotate(45deg);flex:none}
+.chev{width:7px;height:7px;border-right:2px solid #a9b4b2;border-top:2px solid #a9b4b2;transform:rotate(45deg);flex:none;transition:transform .15s}
+.lake:hover .chev{transform:translateX(2px) rotate(45deg);border-color:var(--teal)}
 .tag{display:inline-block;margin-left:8px;padding:1px 6px;border-radius:4px;background:#f7e6eb;color:var(--red);font-size:11px;font-weight:600;letter-spacing:.05em;vertical-align:2px}
+.skel-list{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.skel{height:54px;border-bottom:1px solid var(--line);background:linear-gradient(90deg,#fff 0,#f0f4f3 50%,#fff 100%) no-repeat;background-size:240px 100%;animation:shimmer 1.2s linear infinite}
+.skel:last-child{border-bottom:0}
 
-.card{margin-top:14px;padding:14px 16px;border:1px solid var(--line);border-left:5px solid var(--c);border-radius:10px}
-.card h2{margin:0 0 4px;font-size:18px;font-weight:600;line-height:1.3;color:var(--c)}
-.card p{margin:0;font-size:14px;color:var(--muted)}
+.card{margin-top:14px;padding:14px 16px;border:1px solid color-mix(in srgb,var(--c) 22%,#fff);border-radius:12px;background:color-mix(in srgb,var(--c) 6%,#fff);display:grid;grid-template-columns:34px 1fr;gap:2px 12px;align-items:start}
+.card .ic{grid-row:1 / span 3;width:34px;height:34px;border-radius:50%;background:var(--c);display:grid;place-items:center;color:#fff}
+.card h2{margin:4px 0 4px;font-size:18px;font-weight:600;line-height:1.3;color:var(--c)}
+.card p{margin:0;font-size:14px;color:#34474a}
+.card .row{grid-column:2}
 .c-outside{--c:var(--green)} .c-in_buffer{--c:var(--ochre)} .c-inside_extent{--c:var(--red)} .c-refused,.c-error{--c:var(--red)}
-.stats{display:grid;grid-template-columns:1fr 1fr;gap:1px;margin-top:14px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:1px;margin-top:14px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .stat{background:#fff;padding:12px 14px}
-.stat b{display:block;font:500 17px/1.3 var(--mono)}
+.stat b{display:block;font:500 18px/1.3 var(--mono);letter-spacing:-.01em}
 .stat span{display:block;margin-top:2px;font-size:12.5px;color:var(--muted)}
-.val{margin-top:10px;padding:12px 14px;border:1px solid var(--line);border-radius:10px}
-.val.pending{border-style:dashed}
+.val{margin-top:10px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fbfcfc}
+.val.pending{border-style:dashed;background:#fff}
 .val-h{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px}
 .val-h b{font-size:14px;font-weight:600}
 .pill{padding:1px 6px;border-radius:4px;background:var(--paper);color:var(--muted);font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
@@ -109,42 +136,54 @@ details.manual[open] summary::after{transform:rotate(-135deg)}
 .fine{margin:8px 0 0;font-size:12.5px;line-height:1.4;color:var(--muted)}
 .fine.miss{color:var(--ink)}
 details.prov{margin-top:12px;font-size:13px}
-details.prov summary{min-height:44px;display:flex;align-items:center;cursor:pointer;color:var(--teal);font-weight:500}
-details.prov dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;padding:12px;background:var(--paper);border-radius:8px}
+details.prov summary{min-height:44px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--teal);font-weight:500;list-style:none}
+details.prov summary::-webkit-details-marker{display:none}
+details.prov summary::before{content:"";width:6px;height:6px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform .15s}
+details.prov[open] summary::before{transform:rotate(45deg)}
+details.prov dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;padding:12px;background:var(--soft);border:1px solid var(--line);border-radius:10px}
 details.prov dt{color:var(--muted)}
 details.prov dd{margin:0;font:12px/1.5 var(--mono);overflow-wrap:anywhere}
 
-/* layers */
-.layers{position:fixed;z-index:1001;top:var(--gap);right:var(--gap);width:var(--layers-w);background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow)}
+/* ---------- layers ---------- */
+.layers{position:fixed;z-index:1001;top:var(--gap);right:var(--gap);width:var(--layers-w);background:rgba(255,255,255,.96);backdrop-filter:blur(8px);border-radius:var(--r);box-shadow:var(--shadow)}
 .layers-toggle{display:none}
-.layers-body{padding:6px 14px 8px}
+.layers-body{padding:6px 14px 10px}
 .layers fieldset{border:0;margin:0;padding:0;min-width:0}
-.layers legend{padding:8px 0 0;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.layers legend{padding:8px 0 6px;font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .opt{display:flex;align-items:center;gap:10px;min-height:44px;cursor:pointer;font-size:14px}
-.opt input{width:18px;height:18px;margin:0;accent-color:var(--teal)}
-.sw{width:16px;height:10px;margin-left:auto;border-radius:2px;flex:none}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:3px;background:var(--paper);border-radius:10px}
+.seg .opt{position:relative;justify-content:center;border-radius:8px;font-weight:500;color:var(--muted);transition:background .15s,color .15s}
+.seg .opt input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.seg .opt:has(input:checked){background:#fff;color:var(--ink);box-shadow:var(--shadow-sm)}
+.seg .opt:has(input:focus-visible){outline:3px solid var(--teal-2);outline-offset:1px}
+.sw{width:16px;height:10px;border-radius:2px;flex:none}
 .sw.ext{border:2px solid var(--red)} .sw.buf{border:1.5px dashed var(--ochre);background:rgba(149,100,38,.25)}
 .sw.bld{background:linear-gradient(90deg,var(--red) 0 33%,var(--ochre) 33% 66%,var(--grey) 66%)}
+.toggle{appearance:none;-webkit-appearance:none;flex:none;margin:0 0 0 auto;width:38px;height:22px;border-radius:999px;cursor:pointer;
+  background-color:#cfd8d6;background-image:radial-gradient(circle,#fff 0 8px,transparent 8.5px);background-size:22px 22px;background-repeat:no-repeat;background-position:0 0;
+  transition:background-color .15s,background-position .15s}
+.toggle:checked{background-color:var(--teal);background-position:16px 0}
 
 .note{position:fixed;z-index:999;bottom:24px;left:calc(var(--panel-w) + 2*var(--gap));right:calc(var(--gap) + 60px);display:flex;justify-content:center;pointer-events:none}
-.note span{background:rgba(14,27,29,.85);color:#fff;font-size:12.5px;line-height:1.35;padding:7px 14px;border-radius:999px;text-align:center}
+.note span{display:inline-flex;align-items:center;gap:8px;background:rgba(14,27,29,.86);backdrop-filter:blur(6px);color:#fff;font-size:12.5px;line-height:1.35;padding:8px 14px;border-radius:999px;text-align:center;box-shadow:var(--shadow-sm)}
 .banner{position:fixed;z-index:1002;top:var(--gap);left:calc(var(--panel-w) + 2*var(--gap));right:calc(var(--layers-w) + 2*var(--gap));display:flex;justify-content:center;pointer-events:none}
-.banner span{background:var(--ink);color:#fff;font-size:13.5px;padding:10px 14px;border-radius:8px;box-shadow:var(--shadow)}
+.banner span{background:var(--ink);color:#fff;font-size:13.5px;padding:10px 16px;border-radius:10px;box-shadow:var(--shadow);animation:rise .2s ease-out}
 .banner.syn span{background:var(--red)}
 
-/* phone: bottom sheet */
+/* ---------- phone: bottom sheet ---------- */
 @media (max-width:760px){
   :root{--gap:10px}
-  .panel{top:auto;left:0;right:0;bottom:0;width:auto;max-height:55vh;border-radius:16px 16px 0 0}
-  .grip{display:block;width:40px;height:4px;margin:8px auto 0;border-radius:2px;background:#cfd8d6}
-  .head{padding:6px 16px 10px}
+  .panel{top:auto;left:0;right:0;bottom:0;width:auto;max-height:55vh;border-radius:18px 18px 0 0}
+  .grip{display:block;position:absolute;z-index:2;top:7px;left:50%;width:40px;height:4px;margin-left:-20px;border-radius:2px;background:rgba(255,255,255,.35)}
+  .head{padding:18px 16px 12px}
+  .logo{width:32px;height:32px}
   .body{padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
   .layers{width:auto}
-  .layers-toggle{display:flex;align-items:center;min-height:44px;padding:0 16px;border:0;background:none;font-weight:600;cursor:pointer}
-  .layers-body{display:none;width:210px;border-top:1px solid var(--line)}
+  .layers-toggle{display:flex;align-items:center;gap:6px;min-height:44px;padding:0 16px;border:0;background:none;font-weight:600;cursor:pointer}
+  .layers-body{display:none;width:224px;border-top:1px solid var(--line)}
   .layers.open .layers-body{display:block}
-  .note{top:var(--gap);bottom:auto;left:var(--gap);right:calc(var(--gap) + 94px);justify-content:flex-start}
-  .note span{font-size:11.5px;border-radius:10px;padding:6px 10px;text-align:left}
+  .note{top:var(--gap);bottom:auto;left:var(--gap);right:calc(var(--gap) + 104px);justify-content:flex-start}
+  .note span{font-size:11.5px;border-radius:12px;padding:6px 10px;text-align:left}
   .banner{top:calc(var(--gap) + 64px);left:var(--gap);right:var(--gap)}
   .leaflet-control-zoom{display:none}
   .leaflet-bottom{bottom:var(--sheet-h)}
@@ -157,20 +196,20 @@ details.prov dd{margin:0;font:12px/1.5 var(--mono);overflow-wrap:anywhere}
 <aside class="panel" id="panel" aria-label="Lake boundary check">
   <div class="grip" aria-hidden="true"></div>
   <header class="head">
-    <div class="logo" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M2 11c2-4.5 5-6.5 8-6.5 3 0 6 2 6 5.2C16 13.3 12.4 15 9 15c-3.6 0-7-1.3-7-4z" fill="none" stroke="#ff6a8d" stroke-width="2"/></svg></div>
+    <div class="logo" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 18 18"><path d="M2 11c2-4.5 5-6.5 8-6.5 3 0 6 2 6 5.2C16 13.3 12.4 15 9 15c-3.6 0-7-1.3-7-4z" fill="none" stroke="#ff6a8d" stroke-width="1.9"/></svg></div>
     <div class="brand"><b>lakeaudit</b><span id="meta">Loading…</span></div>
   </header>
   <div class="body">
     <section id="vHome">
       <h1>Check a location</h1>
       <p class="sub">Compares a point with the maximum water extent observed by Sentinel-2 since 2019.</p>
-      <button type="button" class="btn primary block lg" id="btnLocate">Use my location</button>
+      <button type="button" class="btn primary block lg" id="btnLocate"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="10" r="2.2" fill="currentColor"/><path d="M10 1.5v3M10 15.5v3M1.5 10h3M15.5 10h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Use my location</button>
       <details class="manual" id="manual">
-        <summary>Enter coordinates</summary>
+        <summary><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5c-2.6 0-4.5 2-4.5 4.4C3.5 9.3 8 14.5 8 14.5s4.5-5.2 4.5-8.6C12.5 3.5 10.6 1.5 8 1.5z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="6" r="1.6" fill="currentColor"/></svg>Enter coordinates</summary>
         <div class="form">
           <div class="two">
-            <label class="field">Latitude<input id="inLat" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
-            <label class="field">Longitude<input id="inLon" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+            <label class="field">Latitude<input id="inLat" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="17.4300"></label>
+            <label class="field">Longitude<input id="inLon" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="78.4868"></label>
           </div>
           <label class="field">Accuracy (m)<input id="inAcc" inputmode="decimal" autocomplete="off" value="10"></label>
           <div class="row">
@@ -181,7 +220,8 @@ details.prov dd{margin:0;font:12px/1.5 var(--mono);overflow-wrap:anywhere}
         </div>
       </details>
       <div class="label">Lakes</div>
-      <p class="status" id="homeStatus" role="status">Loading lakes…</p>
+      <div class="skel-list" id="lakeSkel" aria-hidden="true"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+      <p class="status" id="homeStatus" role="status" hidden></p>
       <ul class="lakes" id="lakeList" hidden></ul>
     </section>
 
@@ -198,18 +238,20 @@ details.prov dd{margin:0;font:12px/1.5 var(--mono);overflow-wrap:anywhere}
 </aside>
 
 <div class="layers" id="layers">
-  <button type="button" class="layers-toggle" id="layersToggle" aria-expanded="false" aria-controls="layersBody">Layers</button>
+  <button type="button" class="layers-toggle" id="layersToggle" aria-expanded="false" aria-controls="layersBody"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M9 2 1.5 6 9 10l7.5-4zM1.5 9.5 9 13.5l7.5-4M1.5 12.5 9 16.5l7.5-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>Layers</button>
   <div class="layers-body" id="layersBody">
     <fieldset>
       <legend>Map</legend>
-      <label class="opt"><input type="radio" name="base" value="streets" checked>Streets</label>
-      <label class="opt"><input type="radio" name="base" value="satellite">Satellite</label>
+      <div class="seg">
+        <label class="opt"><input type="radio" name="base" value="streets" checked>Streets</label>
+        <label class="opt"><input type="radio" name="base" value="satellite">Satellite</label>
+      </div>
     </fieldset>
     <fieldset>
       <legend>Show</legend>
-      <label class="opt"><input type="checkbox" id="lyExtent" checked>Observed extent<span class="sw ext"></span></label>
-      <label class="opt"><input type="checkbox" id="lyBuffer" checked>Buffer ring<span class="sw buf"></span></label>
-      <label class="opt"><input type="checkbox" id="lyBuildings" checked>Buildings<span class="sw bld"></span></label>
+      <label class="opt"><span class="sw ext"></span>Observed extent<input type="checkbox" class="toggle" id="lyExtent" checked></label>
+      <label class="opt"><span class="sw buf"></span>Buffer ring<input type="checkbox" class="toggle" id="lyBuffer" checked></label>
+      <label class="opt"><span class="sw bld"></span>Buildings<input type="checkbox" class="toggle" id="lyBuildings" checked></label>
     </fieldset>
   </div>
 </div>
@@ -228,9 +270,19 @@ const num = (n, d = 0) => Number(n).toLocaleString('en-IN', {minimumFractionDigi
 const dist = m => m < 1000 ? `${num(m)} m` : `${num(m / 1000, m < 10000 ? 2 : 1)} km`;
 const acres = a => a == null ? '–' : `${num(a, a < 100 ? 1 : 0)} ac`;
 const span = ys => ys && ys.length ? (ys.length > 1 ? `${Math.min(...ys)}–${Math.max(...ys)}` : `${ys[0]}`) : '–';
+const cap = s => s ? s[0].toUpperCase() + s.slice(1) : '';
 
 const ZONE = {inside_extent: 'Inside the observed extent', in_buffer: 'In the buffer ring', outside: 'Outside the extent and buffer'};
 const BLD = {inside_extent: '#a8123a', in_buffer: '#956426', outside: '#6b7a7c'};
+// verdict icons: outside = tick, buffer = ring, inside = filled drop, refused/error = hand
+const ICON = {
+  outside: '<path d="M5 10.5 8.5 14 15 7" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>',
+  in_buffer: '<circle cx="10" cy="10" r="5" fill="none" stroke="#fff" stroke-width="2.4" stroke-dasharray="3 2.2"/>',
+  inside_extent: '<path d="M10 4.5c2.5 3.2 4 5.3 4 7.2a4 4 0 0 1-8 0c0-1.9 1.5-4 4-7.2z" fill="#fff"/>',
+  refused: '<path d="M6.5 6.5l7 7M13.5 6.5l-7 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>',
+  error: '<path d="M10 5.5v5.5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><circle cx="10" cy="14.2" r="1.4" fill="#fff"/>',
+};
+const icon = k => `<span class="ic" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20">${ICON[k] || ''}</svg></span>`;
 const S = {lakes: [], byId: {}, lay: {}, user: null, target: null, lookup: null, selected: null, picking: false, base: 'streets', synthOnly: false};
 
 async function api(path) {
@@ -244,7 +296,7 @@ const mq = matchMedia('(max-width: 760px)');
 const phone = () => mq.matches;
 const panel = $('#panel');
 const sheetH = () => phone() ? panel.offsetHeight : 0;
-const PAD = () => phone() ? {tl: [40, 80], br: [40, sheetH() + 16]} : {tl: [416, 40], br: [256, 70]};
+const PAD = () => phone() ? {tl: [40, 80], br: [40, sheetH() + 16]} : {tl: [424, 40], br: [268, 70]};
 function fly(b, maxZoom = 17, pad = PAD()) {
   if (b && b.isValid()) map.flyToBounds(b, {paddingTopLeft: pad.tl, paddingBottomRight: pad.br, maxZoom, duration: .7});
 }
@@ -260,7 +312,8 @@ syncZoom();
 const bldRenderer = L.canvas({pane: 'bldPane', padding: .4, tolerance: 4});
 
 const BASE = {
-  streets: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19,
+  // standard OSM tiles (no key), muted by CSS so the red line carries the page
+  streets: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, className: 'tiles-muted',
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}),
   satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom: 19, maxNativeZoom: 18,
     attribution: 'Imagery &copy; <a href="https://www.esri.com">Esri</a>, Maxar, Earthstar Geographics'}),
@@ -283,8 +336,10 @@ function buildLake(d) {
   const c = d.card, id = c.lake_id;
   const fc = name => ({type: 'FeatureCollection', features: d.boundary.features.filter(f => f.properties.layer === name)});
   const l = S.lay[id] = {extentFC: fc('max_observed_extent'), ringFC: fc('buffer_ring'), buildingsFC: d.structures};
+  // white halo under the red line keeps it crisp on the light map and on satellite imagery
+  l.halo = L.geoJSON(l.extentFC, {pane: 'extentPane', interactive: false, style: {color: '#fff', weight: 6, opacity: .85, fill: false}});
   l.extent = L.geoJSON(l.extentFC, {pane: 'extentPane', interactive: false,
-    style: {color: '#a8123a', weight: 2.5, fillColor: '#a8123a', fillOpacity: .06}});
+    style: {color: '#a8123a', weight: 2.6, fillColor: '#a8123a', fillOpacity: .07}});
   l.buffer = L.geoJSON(l.ringFC, {pane: 'ringPane', interactive: false,
     style: {color: '#956426', weight: 1.2, dashArray: '5 4', fillColor: '#956426', fillOpacity: .22}});
   l.buildings = L.geoJSON(d.structures, {renderer: bldRenderer, pane: 'bldPane', bubblingMouseEvents: false,
@@ -292,7 +347,7 @@ function buildLake(d) {
     onEachFeature: (f, layer) => layer.on('click', e => S.picking ? pickAt(e.latlng) : buildingPopup(e, f.properties))});
   l.bounds = l.extent.getBounds();
   l.ringBounds = l.buffer.getBounds().isValid() ? l.buffer.getBounds() : l.bounds;
-  G.extent.addLayer(l.extent); G.buffer.addLayer(l.buffer); G.buildings.addLayer(l.buildings);
+  G.extent.addLayer(l.halo); G.extent.addLayer(l.extent); G.buffer.addLayer(l.buffer); G.buildings.addLayer(l.buildings);
 }
 
 function buildingPopup(e, p) {
@@ -304,11 +359,26 @@ function buildingPopup(e, p) {
 }
 
 function addMarker(c) {
-  L.circleMarker([c.centroid.lat, c.centroid.lon], {pane: 'lakePane', radius: 7, weight: 2.5, color: '#a8123a',
-      fillColor: '#fff', fillOpacity: 1, bubblingMouseEvents: false})
-    .bindTooltip(esc(c.name), {permanent: true, direction: 'right', offset: [9, 0], className: 'tip tip-lake'})
+  L.marker([c.centroid.lat, c.centroid.lon], {pane: 'lakePane', keyboard: false, bubblingMouseEvents: false,
+      icon: L.divIcon({className: '', html: '<span class="pin"></span>', iconSize: [18, 18], iconAnchor: [9, 9]})})
+    .bindTooltip(esc(c.name), {permanent: true, direction: 'right', offset: [11, 0], className: 'tip tip-lake'})
     .on('click', e => S.picking ? pickAt(e.latlng) : openLake(c.lake_id))
     .addTo(G.markers);
+}
+
+/* map labels: bigger lakes win; a label that would overlap one already placed is hidden, not stacked */
+function declutter() {
+  const placed = [];
+  const ms = G.markers.getLayers()
+    .map(m => ({el: m.getTooltip() && m.getTooltip().getElement(), size: (S.byId[m.options.lakeId] || {}).extent_acres || 0}))
+    .filter(x => x.el).sort((a, b) => b.size - a.size);
+  for (const {el} of ms) {
+    el.classList.remove('tip-off');
+    const r = el.getBoundingClientRect();
+    if (!r.width) continue;                                        // hidden at high zoom
+    const hit = placed.some(p => r.left < p.right + 4 && r.right > p.left - 4 && r.top < p.bottom + 3 && r.bottom > p.top - 3);
+    if (hit) el.classList.add('tip-off'); else placed.push(r);
+  }
 }
 
 /* lake clicks: vector panes are non-interactive so the buildings canvas keeps its clicks */
@@ -337,6 +407,7 @@ map.on('click', e => {
   if (id) openLake(id);
 });
 map.on('zoomend', () => $('#map').classList.toggle('z-hi', map.getZoom() >= 15));
+map.on('zoomend moveend resize', () => requestAnimationFrame(declutter));
 
 function fitAll() {
   const b = L.latLngBounds([]);
@@ -350,8 +421,9 @@ function drawUser() {
   if (!S.user) return;
   const {lat, lon, acc, source} = S.user;
   L.circle([lat, lon], {pane: 'mePane', radius: acc, color: '#0e1b1d', weight: 1.5, fillColor: '#0e1b1d', fillOpacity: .1, interactive: false}).addTo(G.me);
-  L.circleMarker([lat, lon], {pane: 'mePane', radius: 6.5, color: '#fff', weight: 2.5, fillColor: '#0e1b1d', fillOpacity: 1, interactive: false})
-    .bindTooltip(`${source === 'gps' ? 'You' : 'Point'} ±${num(acc)} m`, {permanent: true, direction: 'top', offset: [0, -8], className: 'tip me'})
+  L.marker([lat, lon], {pane: 'mePane', interactive: false, keyboard: false,
+      icon: L.divIcon({className: '', html: '<span class="me-dot"></span>', iconSize: [16, 16], iconAnchor: [8, 8]})})
+    .bindTooltip(`${source === 'gps' ? 'You' : 'Point'} ±${num(acc)} m`, {permanent: true, direction: 'top', offset: [0, -10], className: 'tip me'})
     .addTo(G.me);
 }
 
@@ -398,10 +470,12 @@ function validationHTML(c) {
 function renderHome() {
   const n = S.lakes.length;
   $('#meta').textContent = `${n} lake${n === 1 ? '' : 's'} · ${S.synthOnly ? 'SYNTHETIC sample' : 'Sentinel-2'}`;
+  $('#lakeSkel').hidden = true;
   $('#homeStatus').hidden = n > 0;
   $('#homeStatus').textContent = 'No lakes processed yet.';
   $('#lakeList').hidden = !n;
   $('#lakeList').innerHTML = S.lakes.map(c => `<li><button type="button" class="lake" data-lake="${esc(c.lake_id)}">
+      <span class="dot" aria-hidden="true"></span>
       <span class="nm">${esc(c.name)}${c.synthetic ? '<span class="tag">SYNTHETIC</span>' : ''}</span>
       <span class="ac">${esc(acres(c.extent_acres))}</span><span class="chev" aria-hidden="true"></span></button></li>`).join('');
 }
@@ -415,6 +489,7 @@ function openLake(id) {
   const withWater = c.area_by_year.filter(r => r.status === 'observed').length;
   const st = c.structures;
   $('#lake').innerHTML = `
+    <div class="eyebrow">${esc(cap(c.area_class || ''))} lake</div>
     <h1>${esc(c.name)}${c.synthetic ? '<span class="tag">SYNTHETIC</span>' : ''}</h1>
     <p class="sub">${esc(c.district || '')}</p>
     <div class="stats">
@@ -457,7 +532,7 @@ function locate(lakeId = null) {
 function geoFail(msg) {
   S.user = null;
   drawUser();
-  setResult(`<div class="card c-error" id="answer" data-state="error"><h2>Location unavailable</h2><p>${esc(msg)}</p>${retryRow}</div>`);
+  setResult(`<div class="card c-error" id="answer" data-state="error">${icon('error')}<h2>Location unavailable</h2><p>${esc(msg)}</p>${retryRow}</div>`);
 }
 
 async function analyze(lat, lon, acc, source, lakeId = null) {
@@ -485,8 +560,8 @@ function renderResult() {
   const lk = S.lookup, u = S.user, c = S.byId[lk.lake_id];
   const acc = lk.reported_gps_accuracy_m, d = lk.distance_to_extent_line_m;
   const card = lk.abstain
-    ? `<div class="card c-refused" id="answer" data-state="refused"><h2>Cannot answer</h2><p>${esc(lk.reason)}</p>${retryRow}</div>`
-    : `<div class="card c-${esc(lk.verdict)}" id="answer" data-state="${esc(lk.verdict)}"><h2>${esc(ZONE[lk.verdict])}</h2><p>${esc(lk.plain)}</p></div>`;
+    ? `<div class="card c-refused" id="answer" data-state="refused">${icon('refused')}<h2>Cannot answer</h2><p>${esc(lk.reason)}</p>${retryRow}</div>`
+    : `<div class="card c-${esc(lk.verdict)}" id="answer" data-state="${esc(lk.verdict)}">${icon(lk.verdict)}<h2>${esc(ZONE[lk.verdict])}</h2><p>${esc(lk.plain)}</p></div>`;
   setResult(`
     <div class="eyebrow">${S.target ? 'Checked against' : 'Nearest lake'}</div>
     <h1>${esc(c.name)}${c.synthetic ? '<span class="tag">SYNTHETIC</span>' : ''}</h1>
@@ -567,6 +642,8 @@ async function boot() {
   try {
     cards = await api('/lakes');
   } catch (err) {
+    $('#lakeSkel').hidden = true;
+    $('#homeStatus').hidden = false;
     $('#homeStatus').textContent = `Could not load lakes (${err.message}).`;
     $('#homeStatus').classList.add('bad');
     $('#meta').textContent = 'Service unreachable';
@@ -576,17 +653,19 @@ async function boot() {
   S.synthOnly = !real.length && cards.length > 0;        // synthetic lakes appear only when nothing real exists
   S.lakes = (real.length ? real : cards).sort((a, b) => a.name.localeCompare(b.name));
   S.lakes.forEach(c => { S.byId[c.lake_id] = c; addMarker(c); });
+  G.markers.getLayers().forEach((m, i) => { m.options.lakeId = S.lakes[i].lake_id; });
   $('#synBanner').hidden = !S.synthOnly;
   applyBase();
   renderHome();
   syncSheet();
   fitAll();
+  requestAnimationFrame(declutter);
   await Promise.all(S.lakes.map(c => api(`/lake/${encodeURIComponent(c.lake_id)}`)
     .then(buildLake)
     .catch(err => console.warn(`lake ${c.lake_id}: ${err.message}`))));
   document.body.dataset.ready = '1';
 }
-window.lakeaudit = {state: S, map, groups: G, base: BASE};
+window.lakeaudit = {state: S, map, groups: G, base: BASE, declutter};
 boot();
 })();
 </script>
