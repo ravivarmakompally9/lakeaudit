@@ -764,8 +764,9 @@ def test_map_fly_survives_a_zero_size_map(app):
     bounds = "L.latLngBounds([17.42, 78.46], [17.44, 78.48])"
     page.evaluate("() => { const m = document.getElementById('map'); m.style.width = m.style.height = '0px'; lakeaudit.map.invalidateSize(); }")
     assert "Invalid LatLng" in page.evaluate(f"""() => {{ try {{ lakeaudit.map.flyToBounds({bounds}, {{duration: .1}});
-        return 'no error'; }} catch (e) {{ return String(e); }} }}""")                  # the bug, unguarded
-    page.evaluate("lakeaudit.map.stop()")
+        return 'no error'; }} catch (e) {{ return String(e); }}
+        finally {{ lakeaudit.map.stop(); }} }}""")      # the bug, unguarded; stop() in the same task, or the queued frame throws again
     page.evaluate(f"lakeaudit.fly({bounds})")                                          # guarded: must not throw
+    page.wait_for_timeout(200)                                   # and must leave no animation frame queued to throw later
     c, z = page.evaluate("[lakeaudit.map.getCenter(), lakeaudit.map.getZoom()]")
     assert all(math.isfinite(v) for v in (c["lat"], c["lng"], z))
