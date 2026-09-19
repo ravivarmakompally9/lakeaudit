@@ -5,11 +5,14 @@ restoration, as one slide. Evidence for the lake-identity check and REVIEW_DEMO 
 
 Each panel: true colour, our max observed extent (red, from outputs/<lake>/boundary.geojson), the OSM
 seed outline (yellow), and open water in that scene (cyan) = MNDWI > 0 on a 10 m grid, connected to the
-OSM outline. That cyan is a quick check, not the pipeline's per-lake Otsu threshold, so its acres differ
-a little from water_by_year.csv. Scenes are pinned by id so the figure is reproducible; the JSON beside
-the PNG records every scene id, the measurements, and the run id / commit / params hash of this run."""
+OSM outline. That cyan is a quick check, not the pipeline's per-lake Otsu threshold, so it is drawn but
+never printed as acres: a panel shows acreage only when the pipeline measured that scene, and then it is
+the pipeline's number from outputs/<lake>/water_by_year.csv. Scenes are pinned by id so the figure is
+reproducible; the JSON beside the PNG records every scene id, the measurements, and the run id / commit /
+params hash of this run."""
 from __future__ import annotations
 
+import csv
 import json
 import sys
 from pathlib import Path
@@ -50,7 +53,10 @@ SCENES = [
 
 
 def main() -> None:
-    prov = new_run(ROOT, [ROOT / "configs" / "thresholds.yaml", ROOT / "configs" / "lakes.yaml"])
+    # same order as pipeline.run_lake: the params hash depends on it, and it must match every other output
+    prov = new_run(ROOT, [ROOT / "configs" / "lakes.yaml", ROOT / "configs" / "thresholds.yaml"])
+    with (ROOT / "outputs" / LAKE / "water_by_year.csv").open() as fh:
+        pipe = {r["scene_id"]: r for r in csv.DictReader(fh) if float(r["area_acres"] or 0) > 0}
     fwd = Transformer.from_crs(4326, UTM, always_xy=True).transform
     seed = shape(json.loads((ROOT / "cache" / "seeds" / f"{LAKE}.geojson").read_text())["geometry"])
     bfeats = json.loads((ROOT / "outputs" / LAKE / "boundary.geojson").read_text())["features"]
@@ -85,6 +91,9 @@ def main() -> None:
                "scene_cloud_pct": round(float(it.properties.get("eo:cloud_cover", float("nan"))), 2),
                "open_water_acres_mndwi_gt0_10m": round(float(water.sum()) * RES_M * RES_M / ACRE_M2, 1),
                "median_mndwi_in_osm_outline": round(float(np.median(mndwi[seed_mask])), 2)}
+        if sid in pipe:
+            rec.update(pipeline_open_water_acres=round(float(pipe[sid]["area_acres"]), 2),
+                       pipeline_run_id=pipe[sid]["run_id"], pipeline_code_commit=pipe[sid]["code_commit"])
         record.append(rec)
         panels.append((rec, read(it.assets["visual"].href, Resampling.bilinear).transpose(1, 2, 0), water))
         print(rec)
@@ -98,17 +107,20 @@ def main() -> None:
             for poly in getattr(geom, "geoms", [geom]):
                 ax.plot(*to_px(*poly.exterior.xy), color=color, lw=1.8, ls=ls)
         ax.set_xticks([]); ax.set_yticks([])
-        ax.set_title(f"{rec['date']} · {rec['note']}\n{rec['open_water_acres_mndwi_gt0_10m']} ac open water · {rec['scene_id']}",
-                     fontsize=10, loc="left")
+        acres = (f"{rec['pipeline_open_water_acres']} ac open water (pipeline) · "
+                 if "pipeline_open_water_acres" in rec else "")
+        ax.set_title(f"{rec['date']} · {rec['note']}\n{acres}{rec['scene_id']}", fontsize=10, loc="left")
     fig.suptitle("Nalla Cheruvu (Kukatpally): six Sentinel-2 scenes, April 2024 → April 2026", fontsize=15, x=0.01, ha="left", y=0.985)
     fig.text(0.01, 0.012,
              f"Red: maximum post-monsoon water extent observed by Sentinel-2 since 2019 (run {ext_f['properties'].get('run_id')}) — "
              "one witness to the FTL, not the notified FTL and not a legal determination.\n"
              "Yellow dashed: OSM way 129532522.   Cyan: open water in that scene, MNDWI > 0 on a 10 m grid, connected to the OSM outline — "
-             "a quick check, not the pipeline threshold.   Window 840 m.\n"
+             "a quick check, not the pipeline threshold, so it is not printed as acres.\n"
+             f"Acreage appears only where the pipeline measured that scene (water_by_year.csv, run {next(iter(pipe.values()))['run_id']}).   "
+             "Window 840 m.\n"
              f"Figure run {prov.run_id} · commit {prov.code_commit} · params {prov.params_hash}.",
              fontsize=8.5, color="#333")
-    fig.tight_layout(rect=[0, 0.06, 1, 0.965], h_pad=3.5)
+    fig.tight_layout(rect=[0, 0.07, 1, 0.965], h_pad=3.5)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT.with_suffix(".png"), dpi=110)
     OUT.with_suffix(".json").write_text(json.dumps({
