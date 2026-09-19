@@ -125,6 +125,19 @@ details.manual[open] summary::after{transform:rotate(-135deg)}
 .stat{background:#fff;padding:12px 14px}
 .stat b{display:block;font:500 18px/1.3 var(--mono);letter-spacing:-.01em}
 .stat span{display:block;margin-top:2px;font-size:12.5px;color:var(--muted)}
+.years{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;align-items:end;margin-top:2px}
+.yr{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0}
+.yv{font:500 11px/1.2 var(--mono);color:var(--ink);white-space:nowrap}
+.yb{display:flex;align-items:flex-end;width:100%;height:46px;background:var(--soft);border-radius:5px;overflow:hidden}
+.yb i{display:block;width:100%;background:linear-gradient(180deg,var(--teal-2),var(--teal));border-radius:3px 3px 0 0}
+.yy{font:11px/1.2 var(--mono);color:var(--muted)}
+.yr-no_open_water .yv{color:var(--ochre)}
+.yr-no_open_water .yb{box-shadow:inset 0 -3px 0 var(--ochre)}
+.yr-insufficient .yv{color:var(--muted)}
+.yr-insufficient .yb{background:#fff;border:1.5px dashed #b9c4c2}
+.yr-next .yv{color:var(--muted);font-family:var(--sans);font-size:10.5px}
+.yr-next .yb{background:repeating-linear-gradient(135deg,#eef2f1 0 5px,#f8faf9 5px 10px);border:1px dashed #c9d3d1}
+.label .unit{text-transform:none;letter-spacing:0;font-weight:500;color:#8a9799;margin-left:4px}
 .val{margin-top:10px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fbfcfc}
 .val.pending{border-style:dashed;background:#fff}
 .val-h{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px}
@@ -440,6 +453,33 @@ function provHTML(p, source) {
     <dt>Run</dt><dd>${esc(p.run_id)}</dd><dt>Commit</dt><dd>${esc(p.code_commit)}</dd><dt>Params</dt><dd>${esc(p.params_hash)}</dd></dl></details>`;
 }
 
+/* every post-monsoon year checked, with the next window that has not been observed yet */
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const day = iso => { const [y, m, d] = iso.split('-').map(Number); return `${d} ${MON[m - 1]} ${y}`; };
+function yearsHTML(c) {
+  const rows = c.area_by_year || [];
+  const max = Math.max(1, ...rows.filter(r => r.status === 'observed').map(r => r.acres));
+  const cell = r => {
+    const what = r.status === 'observed' ? `${acres(r.acres)} of open water` : r.status === 'no_open_water' ? 'clear scene, no open water at the lake' : 'no usable scene';
+    const label = `${r.year}: ${what}${r.acquired ? ` (scene ${day(r.acquired)})` : ''}`;
+    const h = r.status === 'observed' ? Math.max(6, Math.round(100 * r.acres / max)) : 0;
+    const v = r.status === 'observed' ? num(r.acres, r.acres < 100 ? 1 : 0) : r.status === 'no_open_water' ? '0' : '–';
+    return `<div class="yr yr-${esc(r.status)}" role="listitem" data-year="${r.year}" data-status="${esc(r.status)}" title="${esc(label)}" aria-label="${esc(label)}">
+      <span class="yv">${esc(v)}</span><span class="yb"><i style="height:${h}%"></i></span><span class="yy">${r.year}</span></div>`;
+  };
+  const nw = c.next_window;
+  const nwText = nw && ({not_open: `window opens ${day(nw.opens)}`, open: 'window open now, not processed yet',
+                         closed: 'window closed, not processed yet'}[nw.state]);
+  const next = nw ? `<div class="yr yr-next" role="listitem" data-year="${nw.year}" data-status="${esc(nw.state)}" title="${esc(`${nw.year}: ${nwText}`)}" aria-label="${esc(`${nw.year}: ${nwText}`)}">
+      <span class="yv">${nw.state === 'not_open' ? MON[+nw.opens.split('-')[1] - 1] : '…'}</span><span class="yb"></span><span class="yy">${nw.year}</span></div>` : '';
+  const notes = [rows.some(r => r.status === 'no_open_water') && '0 = clear scene, no open water at the lake',
+                 rows.some(r => r.status === 'insufficient') && '– = no usable scene',
+                 nw && `${nw.year}: ${nwText}`].filter(Boolean).join(' · ');
+  return `<div class="label">Water by year <span class="unit">acres, post-monsoon</span></div>
+    <div class="years" role="list" aria-label="Open water by year">${rows.map(cell).join('')}${next}</div>
+    ${notes ? `<p class="fine">${esc(notes)}</p>` : ''}`;
+}
+
 /* how wrong can the line be: our line measured against other witnesses to the edge */
 const KIND = {notified_ftl: 'notified FTL (HMDA)', osm_shoreline: 'OpenStreetMap shoreline', field_gps: 'field GPS walk',
               survey_1971: '1971–72 survey sheet', synthetic: 'synthetic reference'};
@@ -498,6 +538,7 @@ function openLake(id) {
       <div class="stat"><b>${withWater} of ${c.area_by_year.length}</b><span>Years with water</span></div>
       <div class="stat"><b>${st ? `${num(st.inside_extent || 0)} / ${num(st.in_buffer || 0)}` : '–'}</b><span>Buildings inside / in buffer</span></div>
     </div>
+    ${yearsHTML(c)}
     <div class="stack">
       <button type="button" class="btn primary block" data-act="check-here">Check a location here</button>
       <button type="button" class="btn block" data-act="zoom">Zoom to lake</button>

@@ -136,3 +136,19 @@ def test_openapi_documents_every_endpoint(client):
     assert params["lat"]["schema"].get("examples") or params["lat"].get("examples")
     assert "/" not in spec["paths"] and "/classic" not in spec["paths"]   # the app pages are not API
     assert client.get("/docs").status_code == 200
+
+
+def test_cards_list_every_year_and_the_next_window(client):
+    import yaml
+    from datetime import date
+    years = yaml.safe_load((ROOT / "configs" / "thresholds.yaml").read_text())["imagery"]["years"]
+    for c in client.get("/lakes").json():
+        assert [r["year"] for r in c["area_by_year"]] == years                     # every configured year, none dropped
+        assert all(r["status"] in ("observed", "no_open_water", "insufficient") for r in c["area_by_year"])
+        nw = c["next_window"]
+        assert nw["year"] == max(years) + 1 and nw["state"] in ("not_open", "open", "closed")
+    y = max(years) + 1
+    assert api._next_window(years, date(y, 9, 19))["state"] == "not_open"
+    assert api._next_window(years, date(y, 11, 1))["state"] == "open"
+    assert api._next_window(years, date(y + 1, 1, 5))["state"] == "closed"
+    assert api._next_window([]) is None

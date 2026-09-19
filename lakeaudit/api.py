@@ -13,6 +13,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+from datetime import date
 from pathlib import Path
 
 import yaml
@@ -152,10 +153,26 @@ def _card(lake_id: str, v: dict) -> dict:
     }
 
 
+def _next_window(years: list[int], today: date | None = None) -> dict | None:
+    """The first post-monsoon window after the last processed year, and whether it has opened yet,
+    so a reader can see why that year is not in the record (not missing: not observable yet)."""
+    if not years:
+        return None
+    im = (_STATE["cfg"] or {}).get("imagery", {})
+    y = max(years) + 1
+    opens = date.fromisoformat(f"{y}-{im.get('post_monsoon_start_mmdd', '10-15')}")
+    closes = date.fromisoformat(f"{y}-{im.get('post_monsoon_end_mmdd', '12-31')}")
+    today = today or date.today()
+    state = "not_open" if today < opens else ("open" if today <= closes else "closed")
+    return {"year": y, "opens": opens.isoformat(), "closes": closes.isoformat(), "state": state}
+
+
 def _card_now(v: dict) -> dict:
     """The card plus validation records, re-read on every request so a new `validate` shows
     without a restart. Only records made against the run being served appear."""
-    return {**v["card"], "validation": lake_validations(v["dir"], v["run"]["run_id"])}
+    card = v["card"]
+    return {**card, "validation": lake_validations(v["dir"], v["run"]["run_id"]),
+            "next_window": _next_window([r["year"] for r in card["area_by_year"]])}
 
 
 def _geojson(p: Path) -> dict:

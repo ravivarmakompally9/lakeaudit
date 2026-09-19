@@ -241,6 +241,20 @@ def test_lake_buttons_open_each_lake_and_back_returns_home(app):
 
 # ---------------------------------------------------------------- lake page
 
+@SIZES
+def test_lake_screen_shows_every_year_and_the_next_window(app, server, size):
+    page = app(size)
+    for c in [x for x in httpx.get(f"{server}/lakes").json() if not x["synthetic"]]:
+        page.locator("#lakeList .lake", has_text=c["name"]).click()
+        cells = page.locator("#lake .years .yr")
+        got = [(int(cells.nth(i).get_attribute("data-year")), cells.nth(i).get_attribute("data-status")) for i in range(cells.count())]
+        want = [(r["year"], r["status"]) for r in c["area_by_year"]] + [(c["next_window"]["year"], c["next_window"]["state"])]
+        assert got == want, c["name"]
+        assert all(str(y) in cells.nth(i).get_attribute("aria-label") for i, (y, _) in enumerate(got))
+        assert str(c["next_window"]["year"]) in page.inner_text("#lake .years + .fine")
+        page.click("#vLake [data-back]")
+
+
 def test_zoom_to_lake_button(app, server):
     page = app()
     page.locator("#lakeList .lake", has_text="Hussain Sagar").click()
